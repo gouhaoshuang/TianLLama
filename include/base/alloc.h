@@ -31,17 +31,17 @@ public:
     virtual void release(void* ptr) const = 0;
 
         // 内存、显存拷贝
-    // virtual void memcpy(
-    //     const void* src_ptr, void* dest_ptr, std::size_t byte_size,
-    //     MemcpyKind memcpy_kind = MemcpyKind::kMemcpyCPU2CPU,
-    //     void* stream = nullptr, bool need_sync = false
-    // ) const;
+    virtual void memcpy(
+        const void* src_ptr, void* dest_ptr, std::size_t byte_size,
+        MemcpyKind memcpy_kind = MemcpyKind::kMemcpyCPU2CPU,
+        void* stream = nullptr, bool need_sync = false
+    ) const;
 
     // // 内存、 显存清零
-    // virtual void memset_zero(
-    //     void* ptr , size_t byte_size, 
-    //     void* stream = nullptr , bool need_sync = false
-    // ) const;
+    virtual void memset_zero(
+        void* ptr , size_t byte_size, 
+        void* stream = nullptr , bool need_sync = false
+    ) const;
 
 
 
