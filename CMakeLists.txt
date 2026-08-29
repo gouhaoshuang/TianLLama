@@ -1,9 +1,14 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.17)
 
 project(TianLLama LANGUAGES CXX)
+find_package(CUDAToolkit REQUIRED)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(tianllama
     source/base/alloc.cpp
+    source/base/alloc_cpu.cpp
+    source/base/alloc_cu.cpp
 )
 
 target_include_directories(tianllama
@@ -20,10 +25,15 @@ add_executable(test_allocator
     test/optimized/test_allocator.cpp
 )
 
+target_link_libraries(tianllama
+    PUBLIC
+        CUDA::cudart
+)
 target_link_libraries(test_allocator
     PRIVATE
         tianllama
 )
+
 
 enable_testing()
 

@@ -1,16 +1,42 @@
 
-// #include "alloc.h"
+#include "base/alloc.h"
 
-// CUDADeviceAllocator::CUDADeviceAllocator() : DeviceAllocator(DeviceType::kDeviceGPU){}
+#include <cuda_runtime_api.h>
+#include <stdexcept>
+#include <string>
 
 
-// void* CUDADeviceAllocator:: allocate(std::size_t  byte_size) const {
-//     if ( !byte_size ){
-//         return nullptr;
-//     }
 
-// }
+namespace{
+void check_cuda(cudaError_t status , const char * operation){
+    if (status == cudaSuccess){
+        return ;
+    }
 
-// void CUDADeviceAllocator::release(void* ptr) const{
-//     free(ptr);
-// }
+    throw std::runtime_error(
+        std::string(operation) + " 失败：" +
+        cudaGetErrorString(status)
+    );
+}
+}
+
+CUDADeviceAllocator::CUDADeviceAllocator() : DeviceAllocator(DeviceType::kDeviceGPU){}
+
+void* CUDADeviceAllocator:: allocate(std::size_t  byte_size) const {
+    if( byte_size == 0){
+        return nullptr;
+    }
+
+    void * ptr = nullptr;
+
+    check_cuda(cudaMalloc(&ptr , byte_size) , "cudaMalloc");
+    return ptr;
+}
+
+void CUDADeviceAllocator::release(void* ptr) const{
+    if (ptr == nullptr){
+        return;
+    }
+    check_cuda(cudaFree(ptr) , "cudaFree");
+}
+
