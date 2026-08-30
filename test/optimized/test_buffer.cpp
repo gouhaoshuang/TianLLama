@@ -8,11 +8,11 @@
 
 
 int main(){
-    auto allocator = std::make_shared<CPUDeviceAllocator>();
+    auto allocator = std::make_shared<base::CPUDeviceAllocator>();
 
 
     {
-        Buffer buffer(32, allocator);
+        base::Buffer buffer(32, allocator);
 
         assert(buffer.ptr() != nullptr);
         assert(buffer.byte_size() == 32);
@@ -21,10 +21,10 @@ int main(){
     float* external_ptr = new float[32];
 
     {
-        Buffer buffer(
+        base::Buffer buffer(
             32 * sizeof(float),
             external_ptr,
-            DeviceType::kDeviceCPU
+            base::DeviceType::kDeviceCPU
         );
 
         assert(buffer.is_external());

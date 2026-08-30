@@ -9,10 +9,10 @@
 #include <iostream>
 
 bool test_cpu_allocator(){
-    CPUDeviceAllocator cpu_allocator;
-    DeviceAllocator& allocator = cpu_allocator;
+    base::CPUDeviceAllocator cpu_allocator;
+    base::DeviceAllocator& allocator = cpu_allocator;
 
-    if (allocator.device_type() != DeviceType::kDeviceCPU){
+    if (allocator.device_type() != base::DeviceType::kDeviceCPU){
         std::cerr << "错误：设备类型不正确\n";
         return false;
     }
@@ -48,7 +48,7 @@ bool test_cpu_allocator(){
         source.data(),
         destination.data(),
         sizeof(source),
-        MemcpyKind::kMemcpyCPU2CPU
+        base::MemcpyKind::kMemcpyCPU2CPU
     );
 
     if(source != destination){
@@ -68,8 +68,8 @@ bool test_gpu_allocator(){
         return true;
     }
 
-    CUDADeviceAllocator allocator;
-    if(allocator.device_type() != DeviceType::kDeviceGPU){
+    base::CUDADeviceAllocator allocator;
+    if(allocator.device_type() != base::DeviceType::kDeviceGPU){
         std::cerr << "GPU device type test failed \n";
         return false;
     }
@@ -95,21 +95,21 @@ bool test_gpu_allocator(){
         source.data(),
         gpu_source,
         sizeof(source),
-        MemcpyKind::kMemcpyCPU2GPU
+        base::MemcpyKind::kMemcpyCPU2GPU
     );
 
     allocator.memcpy(
         gpu_source,
         gpu_destination,
         sizeof(source),
-        MemcpyKind::kMemcpyGPU2GPU
+        base::MemcpyKind::kMemcpyGPU2GPU
     );
 
     allocator.memcpy(
         gpu_destination,
         destination.data(),
         sizeof(destination),
-        MemcpyKind::kMemcpyGPU2CPU
+        base::MemcpyKind::kMemcpyGPU2CPU
     );
 
     if (source != destination) {
@@ -131,7 +131,7 @@ bool test_gpu_allocator(){
         gpu_destination,
         destination.data(),
         sizeof(destination),
-        MemcpyKind::kMemcpyGPU2CPU
+        base::MemcpyKind::kMemcpyGPU2CPU
     );
 
     bool all_zero = std::all_of(

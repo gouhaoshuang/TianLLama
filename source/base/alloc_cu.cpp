@@ -20,6 +20,9 @@ void check_cuda(cudaError_t status , const char * operation){
 }
 }
 
+namespace base
+{
+
 CUDADeviceAllocator::CUDADeviceAllocator() : DeviceAllocator(DeviceType::kDeviceGPU){}
 
 void* CUDADeviceAllocator:: allocate(std::size_t  byte_size) const {
@@ -46,4 +49,8 @@ void CUDADeviceAllocator::release(void* ptr) const noexcept {
         );
     } 
 }
+
+
+} // namespace base
+
 

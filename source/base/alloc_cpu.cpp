@@ -3,6 +3,8 @@
 #include<cstdlib>
 
 
+namespace base
+{
 CPUDeviceAllocator::CPUDeviceAllocator(): DeviceAllocator(DeviceType::kDeviceCPU){}
 
 void* CPUDeviceAllocator::allocate(std::size_t  byte_size) const  {
@@ -14,4 +16,6 @@ void* CPUDeviceAllocator::allocate(std::size_t  byte_size) const  {
 
 void CPUDeviceAllocator::release(void* ptr) const noexcept {
     std::free(ptr);
-} 
+}
+} // namespace base
+

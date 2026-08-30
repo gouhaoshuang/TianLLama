@@ -1,21 +1,10 @@
 #pragma once
 #include<cstddef>
+#include "base.h"
 
 
-
-enum class DeviceType{
-    kDeviceUnknown = 0,
-    kDeviceCPU,
-    kDeviceGPU
-};
-
-enum class MemcpyKind {
-    kMemcpyCPU2CPU,
-    kMemcpyCPU2GPU,
-    kMemcpyGPU2CPU,
-    kMemcpyGPU2GPU
-};
-
+namespace base
+{
 
 class DeviceAllocator{
 
@@ -70,3 +59,6 @@ public:
     void* allocate(std::size_t byte_size) const override;
     void release(void* ptr) const noexcept override;
 };
+
+
+} // namespace base

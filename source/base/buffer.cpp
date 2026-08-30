@@ -6,6 +6,9 @@
 #include <stdexcept>  // std::invalid_argument
 #include <utility>    // std::move
 
+namespace base
+{
+
 
 // 拥有型 Buffer：通过 allocator 分配并管理资源
 Buffer::Buffer(
@@ -119,3 +122,5 @@ std::shared_ptr<DeviceAllocator> Buffer::allocator() const{
     return allocator_;
 }
 
+
+} // namespace base

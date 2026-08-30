@@ -6,6 +6,7 @@ find_package(CUDAToolkit REQUIRED)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(tianllama
+    source/base/base.cpp
     source/base/alloc.cpp
     source/base/alloc_cpu.cpp
     source/base/alloc_cu.cpp

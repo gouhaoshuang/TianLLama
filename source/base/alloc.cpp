@@ -20,6 +20,8 @@ void check_cuda(cudaError_t status , const char * operation){
 }
 }
 
+namespace base
+{
 
 void DeviceAllocator::memcpy(
     const void* src_ptr,
@@ -96,6 +98,7 @@ void DeviceAllocator::memset_zero(
     void* stream,
     bool need_sync
 ) const {
+
     if(byte_size == 0){
         return ;
     }
@@ -145,3 +148,4 @@ void DeviceAllocator::memset_zero(
     }
 
 }
+} // namespace base

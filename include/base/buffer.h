@@ -5,7 +5,7 @@
 #include<cstddef>
 #include<memory>
 
-
+namespace base{
 
 
 class Buffer
@@ -60,3 +60,6 @@ private:
     DeviceType device_type_ = DeviceType::kDeviceUnknown;
     std::shared_ptr<DeviceAllocator> allocator_;
 };
+
+} // namespace base
+
