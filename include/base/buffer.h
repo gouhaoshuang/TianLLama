@@ -32,8 +32,8 @@ public:
     Buffer(const Buffer& other) = delete;  // 删除复制构造函数
     Buffer& operator= (const Buffer& other) = delete; // 删除复制赋值运算符
 
-    Buffer( Buffer&& other); // 自定义移动构造函数
-    Buffer& operator=( Buffer&& other) ;  // 自定义移动赋值运算符
+    Buffer( Buffer&& other) ; // 自定义移动构造函数
+    Buffer& operator=( Buffer&& other)  ;  // 自定义移动赋值运算符
 
 
     void * ptr();

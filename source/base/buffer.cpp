@@ -16,7 +16,13 @@ Buffer::Buffer(
     std::shared_ptr<DeviceAllocator> allocator
 ):
     byte_size_(byte_size), 
-    allocator_(allocator) {
+    allocator_(std::move(allocator))
+{
+    if (allocator_ == nullptr) {
+        throw std::invalid_argument(
+            "Buffer requires a non-null allocator"
+        );
+    }
     
     if (!ptr_ && allocator_) {
         device_type_ = allocator_->device_type();

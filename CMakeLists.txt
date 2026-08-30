@@ -11,6 +11,7 @@ add_library(tianllama
     source/base/alloc_cpu.cpp
     source/base/alloc_cu.cpp
     source/base/buffer.cpp
+    source/tensor/tensor.cpp
 )
 
 target_include_directories(tianllama
@@ -45,6 +46,14 @@ target_link_libraries(test_buffer
     PRIVATE
         tianllama
 )
+add_executable(test_tensor
+    test/tensor/test_tensor.cpp
+)
+
+target_link_libraries(test_tensor
+    PRIVATE
+        tianllama
+)
 
 
 enable_testing()
@@ -56,4 +65,8 @@ add_test(
 add_test(
     NAME test_buffer
     COMMAND test_buffer
+)
+add_test(
+    NAME test_tensor
+    COMMAND test_tensor
 )
