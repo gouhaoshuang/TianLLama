@@ -12,6 +12,6 @@ void* CPUDeviceAllocator::allocate(std::size_t  byte_size) const  {
     return std::malloc(byte_size);
 }
 
-void CPUDeviceAllocator::release(void* ptr) const{
+void CPUDeviceAllocator::release(void* ptr) const noexcept {
     std::free(ptr);
 } 

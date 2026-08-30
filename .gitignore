@@ -2,3 +2,4 @@ docs/*
 AGENTS.md
 /build/
 /.vscode/
+samples/

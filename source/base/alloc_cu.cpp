@@ -4,7 +4,7 @@
 #include <cuda_runtime_api.h>
 #include <stdexcept>
 #include <string>
-
+#include <cstdio>
 
 
 namespace{
@@ -33,10 +33,17 @@ void* CUDADeviceAllocator:: allocate(std::size_t  byte_size) const {
     return ptr;
 }
 
-void CUDADeviceAllocator::release(void* ptr) const{
+void CUDADeviceAllocator::release(void* ptr) const noexcept {
     if (ptr == nullptr){
         return;
     }
-    check_cuda(cudaFree(ptr) , "cudaFree");
+    cudaError_t status = cudaFree(ptr);
+    if(status != cudaSuccess){
+        std::fprintf(
+            stderr,
+            "cudaFree failed: %s\n",
+            cudaGetErrorString(status)
+        );
+    } 
 }
 
