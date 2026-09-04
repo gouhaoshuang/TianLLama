@@ -5,14 +5,26 @@ find_package(CUDAToolkit REQUIRED)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_library(tianllama
-    source/base/base.cpp
-    source/base/alloc.cpp
-    source/base/alloc_cpu.cpp
-    source/base/alloc_cu.cpp
-    source/base/buffer.cpp
-    source/tensor/tensor.cpp
+# add_library(tianllama
+#     source/base/base.cpp
+#     source/base/alloc.cpp
+#     source/base/alloc_cpu.cpp
+#     source/base/alloc_cu.cpp
+#     source/base/buffer.cpp
+#     source/tensor/tensor.cpp
+#     source/op/layer.cpp
+# )
+
+file(
+    GLOB_RECURSE TIANLLAMA_SOURCES
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp"
 )
+
+add_library(tianllama
+    ${TIANLLAMA_SOURCES}
+)
+
 
 target_include_directories(tianllama
     PUBLIC
@@ -54,7 +66,14 @@ target_link_libraries(test_tensor
     PRIVATE
         tianllama
 )
+add_executable(test_add_layer
+    test/op/test_add_layer.cpp
+)
 
+target_link_libraries(test_add_layer
+    PRIVATE
+        tianllama
+)
 
 enable_testing()
 
@@ -69,4 +88,8 @@ add_test(
 add_test(
     NAME test_tensor
     COMMAND test_tensor
+)
+add_test(
+    NAME test_add_layer
+    COMMAND test_add_layer
 )

@@ -1,17 +1,22 @@
 #pragma once
 
 #include "base/base.h"
+#include "tensor/tensor.h"
+#include "base/cuda_config.h"
 
+#include<vector>
 #include<string>
 #include <cstdint>
-
 
 namespace op
 {
 
 
 
-class Layer;
+using TensorInputs = std::vector<const tensor::Tensor *>; 
+using TensorOutputs = std::vector<tensor::Tensor *>; 
+
+
 
 enum class LayerType : uint8_t{
     kLayerUnknown = 0,
@@ -64,21 +69,17 @@ private:
 };
 
 
-class layer : public BaseLayer
+class Layer 
 {
     
 public:
-    layer(/* args */);
-    ~layer();
+    virtual ~Layer() = default;
 
-private:
-
-
+    virtual base::Status forward(
+        const TensorInputs& inputs,
+        const TensorOutputs& outputs
+    ) const = 0;
 };
-
-
-
-
 
 
 } // namespace op

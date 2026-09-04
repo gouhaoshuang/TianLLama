@@ -3,3 +3,4 @@ AGENTS.md
 /build/
 /.vscode/
 samples/
+.agent/

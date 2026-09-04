@@ -28,7 +28,7 @@ public:
     Tensor& operator=(const Tensor& other) = delete;
 
     Tensor( Tensor&& other) noexcept = default;
-    Tensor& operator=( Tensor&& other) = default;
+    Tensor& operator=( Tensor&& other) noexcept = default;
 
     std::size_t size() const;
     std::size_t byte_size() const;

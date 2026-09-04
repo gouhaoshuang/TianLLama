@@ -44,7 +44,7 @@ std::size_t compute_numel(
             );
         }
 
-        const auto unsigned_dim =   static_cast<std::size_t>(dim);
+        const auto unsigned_dim = static_cast<std::size_t>(dim);
         numel *= unsigned_dim;
     }
 
