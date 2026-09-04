@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 3.17)
 
 project(TianLLama LANGUAGES CXX)
+
 find_package(CUDAToolkit REQUIRED)
+find_package(GTest CONFIG REQUIRED)
+
+include(GoogleTest)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -73,7 +77,11 @@ add_executable(test_add_layer
 target_link_libraries(test_add_layer
     PRIVATE
         tianllama
+        GTest::gtest
+        GTest::gtest_main
 )
+
+gtest_discover_tests(test_add_layer)
 
 enable_testing()
 
@@ -88,8 +96,4 @@ add_test(
 add_test(
     NAME test_tensor
     COMMAND test_tensor
-)
-add_test(
-    NAME test_add_layer
-    COMMAND test_add_layer
 )

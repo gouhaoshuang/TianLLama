@@ -7,14 +7,13 @@ namespace op
 {
 
 
-class AddLayer : public Layer{
+class AddLayer final  : public Layer{
 public:
 
-    virtual base::Status forward(
+    base::Status forward(
         const TensorInputs& inputs,
         const TensorOutputs& outputs
     ) const override;
 
 };
-
 } // namespace op

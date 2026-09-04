@@ -1,5 +1,5 @@
 #include "op/add.h"
-
+#include "kernel/add.h"
 
 #include <cstddef>
 
@@ -10,6 +10,8 @@ base::Status AddLayer::forward(
     const TensorInputs& inputs,
     const TensorOutputs& outputs
 ) const {
+
+    // 第一步：检查输入输出数量
     if(inputs.size() != 2){
         return {
             base::kInvalidArgument,
@@ -22,6 +24,8 @@ base::Status AddLayer::forward(
             "AddLayer 必须要一个输出参数！！"
         };
     }
+
+    // 第二步：检查 Tensor 对象指针
     if (inputs[0] == nullptr ||
         inputs[1] == nullptr ||
         outputs[0] == nullptr) {
@@ -35,7 +39,7 @@ base::Status AddLayer::forward(
     const tensor::Tensor& right = *inputs[1];
     tensor::Tensor& output = *outputs[0];
 
-
+    // 第三步：检查数据类型
     if (left.data_type() != base::DataType::kDataTypeFp32 ||
         right.data_type() != base::DataType::kDataTypeFp32 ||
         output.data_type() != base::DataType::kDataTypeFp32) {
@@ -45,6 +49,7 @@ base::Status AddLayer::forward(
         };
     }
 
+    // 第四步：检查设备类型
     if (left.device_type() != base::DeviceType::kDeviceCPU ||
         right.device_type() != base::DeviceType::kDeviceCPU ||
         output.device_type() != base::DeviceType::kDeviceCPU) {
@@ -53,6 +58,8 @@ base::Status AddLayer::forward(
             "AddLayer 目前  只支持  CPU 推理"
         };
     }
+
+    // 第五步：检查 shape
     if (left.dims() != right.dims() ||
         left.dims() != output.dims()) {
         return {
@@ -61,25 +68,17 @@ base::Status AddLayer::forward(
         };
     }
 
-    const float* left_data = left.ptr<float>();
-    const float* right_data = right.ptr<float>();
-
-    float* output_data = output.ptr<float>();
-
-    if (left_data == nullptr ||
-        right_data == nullptr ||
-        output_data == nullptr) {
+    // 第六步：检查底层内存
+    if (left.ptr<float>() == nullptr ||
+        right.ptr<float>() == nullptr ||
+        output.ptr<float>() == nullptr) {
         return {
             base::kInvalidArgument,
             "AddLayer Tensor memory is empty"
         };
     }
 
-    for(std::size_t i = 0 ; i < output.size() ;i ++){
-        output_data[i] = left_data[i] + right_data[i];
-    }
-
-    return {}; // status 默认构造
+    return kernel::add_cpu(left, right, output);
 }
 
 

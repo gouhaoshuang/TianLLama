@@ -2,33 +2,25 @@
 #include "op/add.h"
 #include "tensor/tensor.h"
 
+#include <gtest/gtest.h>
 
-#include<cassert>
-#include<iostream>
-#include<memory>
+#include <cstddef>
+#include <memory>
 
-int main(){
-
+TEST(AddLayerTest, AddsTwoCpuFp32Tensors)
+{
     auto allocator = std::make_shared<base::CPUDeviceAllocator>();
 
-    tensor::Tensor left(
-        {4},
-        base::DataType::kDataTypeFp32,
-        allocator
-    );
-    tensor::Tensor right(
-        {4},
-        base::DataType::kDataTypeFp32,
-        allocator
-    );
-    tensor::Tensor output(
-        {4},
-        base::DataType::kDataTypeFp32,
-        allocator
-    );
+    tensor::Tensor left({4}, base::DataType::kDataTypeFp32, allocator);
+    tensor::Tensor right({4}, base::DataType::kDataTypeFp32, allocator);
+    tensor::Tensor output({4}, base::DataType::kDataTypeFp32, allocator);
 
-    float* left_data = left.ptr<float>();
-    float* right_data = right.ptr<float>();
+    float *left_data = left.ptr<float>();
+    float *right_data = right.ptr<float>();
+
+    ASSERT_NE(left_data, nullptr);
+    ASSERT_NE(right_data, nullptr);
+
     left_data[0] = 1.0F;
     left_data[1] = 2.0F;
     left_data[2] = 3.0F;
@@ -43,33 +35,58 @@ int main(){
 
     base::Status status = layer.forward(
         {&left, &right},
-        {&output}
-    );
+        {&output});
 
-    assert(status);
+    ASSERT_TRUE(status) << status.get_err_message();
 
-    const float* result = output.ptr<float>();
+    const float *result = output.ptr<float>();
 
-    assert(result[0] == 11.0F);
-    assert(result[1] == 22.0F);
-    assert(result[2] == 33.0F);
-    assert(result[3] == 44.0F);
+    ASSERT_NE(result, nullptr);
 
-    tensor::Tensor wrong_output(
-        {2},
-        base::DataType::kDataTypeFp32,
-        allocator
-    );
+    EXPECT_FLOAT_EQ(result[0], 11.0F);
+    EXPECT_FLOAT_EQ(result[1], 22.0F);
+    EXPECT_FLOAT_EQ(result[2], 33.0F);
+    EXPECT_FLOAT_EQ(result[3], 44.0F);
+}
 
-    base::Status wrong_status = layer.forward(
+TEST(AddLayerTest, RejectsWrongOutputShape) {
+    auto allocator = std::make_shared<base::CPUDeviceAllocator>();
+
+    tensor::Tensor left({4}, base::DataType::kDataTypeFp32, allocator);
+    tensor::Tensor right({4}, base::DataType::kDataTypeFp32, allocator);
+    tensor::Tensor wrong_output({2}, base::DataType::kDataTypeFp32, allocator);
+
+    op::AddLayer layer;
+
+    base::Status status = layer.forward(
         {&left, &right},
         {&wrong_output}
     );
 
-    assert(!wrong_status);
-    assert(wrong_status.get_err_code() == base::kInvalidArgument);
+    EXPECT_FALSE(status);
+    EXPECT_EQ(
+        status.get_err_code(),
+        base::kInvalidArgument
+    );
+}
+
+TEST(AddLayerTest, RejectsNullTensor) {
+    auto allocator = std::make_shared<base::CPUDeviceAllocator>();
+
+    tensor::Tensor input({4}, base::DataType::kDataTypeFp32, allocator);
+    tensor::Tensor output({4}, base::DataType::kDataTypeFp32, allocator);
 
 
-    std::cout << "AddLayer test passed\n";
-    return 0;
+    op::AddLayer layer;
+
+    base::Status status = layer.forward(
+        {&input, nullptr},
+        {&output}
+    );
+
+    EXPECT_FALSE(status);
+    EXPECT_EQ(
+        status.get_err_code(),
+        base::kInvalidArgument
+    );
 }
