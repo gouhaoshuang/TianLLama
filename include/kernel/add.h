@@ -14,5 +14,11 @@ base::Status add_cpu(
     tensor::Tensor&  output
 ) ;
 
+base::Status add_cuda(
+    const tensor::Tensor& left,
+    const tensor::Tensor& right,
+    tensor::Tensor&  output
+) ;
+
 
 }  // namespace kernel

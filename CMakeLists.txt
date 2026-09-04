@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.18)
 
-project(TianLLama LANGUAGES CXX)
+project(TianLLama LANGUAGES CXX CUDA)
 
 find_package(CUDAToolkit REQUIRED)
 find_package(GTest CONFIG REQUIRED)
@@ -8,6 +8,13 @@ find_package(GTest CONFIG REQUIRED)
 include(GoogleTest)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 89)
+endif()
+
+
 
 # add_library(tianllama
 #     source/base/base.cpp
@@ -23,6 +30,7 @@ file(
     GLOB_RECURSE TIANLLAMA_SOURCES
     CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/source/*.cu"
 )
 
 add_library(tianllama
@@ -39,7 +47,10 @@ target_compile_features(tianllama
     PUBLIC
         cxx_std_20
 )
-
+set_target_properties(tianllama PROPERTIES
+    CUDA_STANDARD 17
+    CUDA_STANDARD_REQUIRED ON
+)
 
 target_link_libraries(tianllama
     PUBLIC

@@ -2,6 +2,8 @@
 #include "op/add.h"
 #include "tensor/tensor.h"
 
+#include <cuda_runtime_api.h>
+#include <array>
 #include <gtest/gtest.h>
 
 #include <cstddef>
@@ -49,7 +51,8 @@ TEST(AddLayerTest, AddsTwoCpuFp32Tensors)
     EXPECT_FLOAT_EQ(result[3], 44.0F);
 }
 
-TEST(AddLayerTest, RejectsWrongOutputShape) {
+TEST(AddLayerTest, RejectsWrongOutputShape)
+{
     auto allocator = std::make_shared<base::CPUDeviceAllocator>();
 
     tensor::Tensor left({4}, base::DataType::kDataTypeFp32, allocator);
@@ -60,33 +63,81 @@ TEST(AddLayerTest, RejectsWrongOutputShape) {
 
     base::Status status = layer.forward(
         {&left, &right},
-        {&wrong_output}
-    );
+        {&wrong_output});
 
     EXPECT_FALSE(status);
     EXPECT_EQ(
         status.get_err_code(),
-        base::kInvalidArgument
-    );
+        base::kInvalidArgument);
 }
 
-TEST(AddLayerTest, RejectsNullTensor) {
+TEST(AddLayerTest, RejectsNullTensor)
+{
     auto allocator = std::make_shared<base::CPUDeviceAllocator>();
 
     tensor::Tensor input({4}, base::DataType::kDataTypeFp32, allocator);
     tensor::Tensor output({4}, base::DataType::kDataTypeFp32, allocator);
 
-
     op::AddLayer layer;
 
     base::Status status = layer.forward(
         {&input, nullptr},
-        {&output}
-    );
+        {&output});
 
     EXPECT_FALSE(status);
     EXPECT_EQ(
         status.get_err_code(),
-        base::kInvalidArgument
-    );
+        base::kInvalidArgument);
+}
+
+TEST(AddLayerTest, AddsTwoCudaFp32Tensors)
+{
+    int device_count = 0;
+    const cudaError_t cuda_status = cudaGetDeviceCount(&device_count);
+
+    if (cuda_status != cudaSuccess || device_count == 0)
+    {
+        GTEST_SKIP() << "CUDA device is not available";
+    }
+
+    auto allocator = std::make_shared<base::CUDADeviceAllocator>();
+
+    tensor::Tensor left({4}, base::DataType::kDataTypeFp32, allocator);
+    tensor::Tensor right({4}, base::DataType::kDataTypeFp32, allocator);
+    tensor::Tensor output({4}, base::DataType::kDataTypeFp32, allocator);
+
+    const std::array<float, 4> host_left{1.0F, 2.0F, 3.0F, 4.0F};
+    const std::array<float, 4> host_right{10.0F, 20.0F, 30.0F, 40.0F};
+    std::array<float, 4> host_output{};
+
+    allocator->memcpy(
+        host_left.data(),
+        left.ptr<float>(),
+        left.byte_size(),
+        base::MemcpyKind::kMemcpyCPU2GPU);
+
+    allocator->memcpy(
+        host_right.data(),
+        right.ptr<float>(),
+        right.byte_size(),
+        base::MemcpyKind::kMemcpyCPU2GPU);
+
+    op::AddLayer layer;
+
+    const base::Status status = layer.forward(
+        {&left, &right},
+        {&output});
+    
+    ASSERT_TRUE(status) << status.get_err_message();
+
+    allocator->memcpy(
+        output.ptr<float>(),
+        host_output.data(),
+        output.byte_size(),
+        base::MemcpyKind::kMemcpyGPU2CPU);
+
+    EXPECT_FLOAT_EQ(host_output[0], 11.0F);
+    EXPECT_FLOAT_EQ(host_output[1], 22.0F);
+    EXPECT_FLOAT_EQ(host_output[2], 33.0F);
+    EXPECT_FLOAT_EQ(host_output[3], 44.0F);
 }
