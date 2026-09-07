@@ -91,8 +91,20 @@ target_link_libraries(test_add_layer
         GTest::gtest
         GTest::gtest_main
 )
+add_executable(test_rmsnorm_layer
+    test/op/test_rmsnorm_layer.cpp
+)
+
+target_link_libraries(test_rmsnorm_layer
+    PRIVATE
+        tianllama
+        GTest::gtest
+        GTest::gtest_main
+)
+
 
 gtest_discover_tests(test_add_layer)
+gtest_discover_tests(test_rmsnorm_layer)
 
 enable_testing()
 

@@ -6,8 +6,6 @@
 namespace kernel{
 
 
-
-
 base::Status add_cpu(
     const tensor::Tensor& left,
     const tensor::Tensor& right,

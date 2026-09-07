@@ -36,7 +36,8 @@ namespace kernel
 base::Status add_cuda(
     const tensor::Tensor &left,
     const tensor::Tensor &right,
-    tensor::Tensor &output
+    tensor::Tensor &output,
+    void* stream 
 ){
     const std::size_t element_count = output.size();
 
@@ -53,8 +54,15 @@ base::Status add_cuda(
 
     std::size_t block_count = (element_count + threads_per_block - 1) / threads_per_block; // 向上取整
 
-    add_fp32_kernel<<<block_count, threads_per_block>>>(
-        left_data, right_data, output_data, element_count);
+
+    cudaStream_t cuda_stream = static_cast<cudaStream_t>(stream);
+
+    add_fp32_kernel<<<
+        block_count,  // 线程块数量
+        threads_per_block,  // 每块线程数、
+        0,  // 动态共享内存字节数、
+        cuda_stream // stream。
+    >>>( left_data, right_data, output_data, element_count);
 
     cudaError_t status = cudaGetLastError();
 
@@ -66,7 +74,7 @@ base::Status add_cuda(
         );
     }
 
-    status = cudaDeviceSynchronize();
+    status = cudaStreamSynchronize(cuda_stream);
 
     if (status != cudaSuccess) {
         return make_cuda_error(

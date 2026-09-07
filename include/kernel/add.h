@@ -17,7 +17,8 @@ base::Status add_cpu(
 base::Status add_cuda(
     const tensor::Tensor& left,
     const tensor::Tensor& right,
-    tensor::Tensor&  output
+    tensor::Tensor&  output,
+    void* stream = nullptr
 ) ;
 
 

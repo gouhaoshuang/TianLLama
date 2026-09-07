@@ -1,0 +1,15 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+NamespaceIndentation: None
+
+# 不设置行宽限制，尽量尊重已有换行
+ColumnLimit: 0
+
+# 函数声明、定义的参数不挤在同一行
+BinPackParameters: false
+# 函数调用的实参不挤在同一行
+BinPackArguments: false
+
+# 不把全部参数打包到紧接着的下一行
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllArgumentsOnNextLine: false

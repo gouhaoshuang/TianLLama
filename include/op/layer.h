@@ -1,34 +1,27 @@
 #pragma once
 
 #include "base/base.h"
+#include "base/execution_context.h"
 #include "tensor/tensor.h"
-#include "base/cuda_config.h"
 
-#include<vector>
-#include<string>
 #include <cstdint>
+#include <string>
+#include <vector>
 
-namespace op
-{
+namespace op {
 
+using TensorInputs = std::vector<const tensor::Tensor *>;
+using TensorOutputs = std::vector<tensor::Tensor *>;
 
+class Layer {
 
-using TensorInputs = std::vector<const tensor::Tensor *>; 
-using TensorOutputs = std::vector<tensor::Tensor *>; 
-
-
-
-class Layer 
-{
-    
-public:
+  public:
     virtual ~Layer() = default;
 
     virtual base::Status forward(
-        const TensorInputs& inputs,
-        const TensorOutputs& outputs
-    ) const = 0;
+        const TensorInputs &inputs,
+        const TensorOutputs &outputs,
+        const base::ExecutionContext &context = {}) const = 0;
 };
-
 
 } // namespace op

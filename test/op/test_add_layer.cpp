@@ -2,15 +2,14 @@
 #include "op/add.h"
 #include "tensor/tensor.h"
 
-#include <cuda_runtime_api.h>
 #include <array>
+#include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
 #include <cstddef>
 #include <memory>
 
-TEST(AddLayerTest, AddsTwoCpuFp32Tensors)
-{
+TEST(AddLayerTest, AddsTwoCpuFp32Tensors) {
     auto allocator = std::make_shared<base::CPUDeviceAllocator>();
 
     tensor::Tensor left({4}, base::DataType::kDataTypeFp32, allocator);
@@ -51,8 +50,7 @@ TEST(AddLayerTest, AddsTwoCpuFp32Tensors)
     EXPECT_FLOAT_EQ(result[3], 44.0F);
 }
 
-TEST(AddLayerTest, RejectsWrongOutputShape)
-{
+TEST(AddLayerTest, RejectsWrongOutputShape) {
     auto allocator = std::make_shared<base::CPUDeviceAllocator>();
 
     tensor::Tensor left({4}, base::DataType::kDataTypeFp32, allocator);
@@ -71,8 +69,7 @@ TEST(AddLayerTest, RejectsWrongOutputShape)
         base::kInvalidArgument);
 }
 
-TEST(AddLayerTest, RejectsNullTensor)
-{
+TEST(AddLayerTest, RejectsNullTensor) {
     auto allocator = std::make_shared<base::CPUDeviceAllocator>();
 
     tensor::Tensor input({4}, base::DataType::kDataTypeFp32, allocator);
@@ -90,13 +87,11 @@ TEST(AddLayerTest, RejectsNullTensor)
         base::kInvalidArgument);
 }
 
-TEST(AddLayerTest, AddsTwoCudaFp32Tensors)
-{
+TEST(AddLayerTest, AddsTwoCudaFp32Tensors) {
     int device_count = 0;
     const cudaError_t cuda_status = cudaGetDeviceCount(&device_count);
 
-    if (cuda_status != cudaSuccess || device_count == 0)
-    {
+    if (cuda_status != cudaSuccess || device_count == 0) {
         GTEST_SKIP() << "CUDA device is not available";
     }
 
@@ -127,7 +122,7 @@ TEST(AddLayerTest, AddsTwoCudaFp32Tensors)
     const base::Status status = layer.forward(
         {&left, &right},
         {&output});
-    
+
     ASSERT_TRUE(status) << status.get_err_message();
 
     allocator->memcpy(
@@ -135,6 +130,84 @@ TEST(AddLayerTest, AddsTwoCudaFp32Tensors)
         host_output.data(),
         output.byte_size(),
         base::MemcpyKind::kMemcpyGPU2CPU);
+
+    EXPECT_FLOAT_EQ(host_output[0], 11.0F);
+    EXPECT_FLOAT_EQ(host_output[1], 22.0F);
+    EXPECT_FLOAT_EQ(host_output[2], 33.0F);
+    EXPECT_FLOAT_EQ(host_output[3], 44.0F);
+}
+
+struct TestStream {
+    cudaStream_t handle = nullptr;
+
+    TestStream() = default;
+
+    TestStream(const TestStream &other) = delete;
+    TestStream &operator=(const TestStream &other) = delete;
+
+    ~TestStream() {
+        if (handle != nullptr) {
+            cudaStreamDestroy(handle);
+        }
+    }
+};
+
+TEST(AddLayerTest, AddsOnExplicitCudaStream) {
+    int device_count = 0;
+    const cudaError_t cuda_status = cudaGetDeviceCount(&device_count);
+
+    if (cuda_status != cudaSuccess || device_count == 0) {
+        GTEST_SKIP() << "CUDA device is not available";
+    }
+
+    auto allocator = std::make_shared<base::CUDADeviceAllocator>();
+
+    tensor::Tensor left({4}, base::DataType::kDataTypeFp32, allocator);
+    tensor::Tensor right({4}, base::DataType::kDataTypeFp32, allocator);
+    tensor::Tensor output({4}, base::DataType::kDataTypeFp32, allocator);
+
+    const std::array<float, 4> host_left{1.0F, 2.0F, 3.0F, 4.0F};
+    const std::array<float, 4> host_right{10.0F, 20.0F, 30.0F, 40.0F};
+    std::array<float, 4> host_output{};
+
+    TestStream stream;
+
+    ASSERT_EQ(cudaStreamCreate(&stream.handle), cudaSuccess);
+    base::ExecutionContext context;
+    context.stream = stream.handle;
+
+    allocator->memcpy(
+        host_left.data(),
+        left.ptr<float>(),
+        left.byte_size(),
+        base::MemcpyKind::kMemcpyCPU2GPU,
+        context.stream,
+        true);
+
+    allocator->memcpy(
+        host_right.data(),
+        right.ptr<float>(),
+        right.byte_size(),
+        base::MemcpyKind::kMemcpyCPU2GPU,
+        context.stream,
+        true);
+
+    op::AddLayer layer;
+
+    const base::Status status = layer.forward(
+        {&left, &right},
+        {&output},
+        context);
+
+    ASSERT_TRUE(status) << status.get_err_message();
+
+    allocator->memcpy(
+        output.ptr<float>(),
+        host_output.data(),
+        output.byte_size(),
+        base::MemcpyKind::kMemcpyGPU2CPU,
+        context.stream,
+        true);
 
     EXPECT_FLOAT_EQ(host_output[0], 11.0F);
     EXPECT_FLOAT_EQ(host_output[1], 22.0F);
