@@ -4,3 +4,6 @@ AGENTS.md
 /.vscode/
 samples/
 .agent/
+/build-cuda-debug/
+/build-ncu/
+/reports/

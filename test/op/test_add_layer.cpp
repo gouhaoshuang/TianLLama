@@ -2,6 +2,7 @@
 #include "op/add.h"
 #include "tensor/tensor.h"
 
+
 #include <array>
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
@@ -16,8 +17,8 @@ TEST(AddLayerTest, AddsTwoCpuFp32Tensors) {
     tensor::Tensor right({4}, base::DataType::kDataTypeFp32, allocator);
     tensor::Tensor output({4}, base::DataType::kDataTypeFp32, allocator);
 
-    float *left_data = left.ptr<float>();
-    float *right_data = right.ptr<float>();
+    float* left_data = left.ptr<float>();
+    float* right_data = right.ptr<float>();
 
     ASSERT_NE(left_data, nullptr);
     ASSERT_NE(right_data, nullptr);
@@ -40,7 +41,7 @@ TEST(AddLayerTest, AddsTwoCpuFp32Tensors) {
 
     ASSERT_TRUE(status) << status.get_err_message();
 
-    const float *result = output.ptr<float>();
+    const float* result = output.ptr<float>();
 
     ASSERT_NE(result, nullptr);
 
@@ -142,8 +143,8 @@ struct TestStream {
 
     TestStream() = default;
 
-    TestStream(const TestStream &other) = delete;
-    TestStream &operator=(const TestStream &other) = delete;
+    TestStream(const TestStream& other) = delete;
+    TestStream& operator=(const TestStream& other) = delete;
 
     ~TestStream() {
         if (handle != nullptr) {

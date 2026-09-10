@@ -13,3 +13,7 @@ BinPackArguments: false
 # 不把全部参数打包到紧接着的下一行
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowAllArgumentsOnNextLine: false
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false  # 不根据现有代码风格自动推断，始终使用上述设置。
