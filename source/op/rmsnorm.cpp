@@ -15,7 +15,7 @@ RmsNormLayer::RmsNormLayer(
     if (!std::isfinite(epsilon_) || epsilon_ <= 0.0F) {
         throw std::invalid_argument("RMSNorm epsilon must be finite and positive");
     }
-    const tensor::Tensor &w = this->weight();
+    const tensor::Tensor& w = this->weight();
 
     if (w.empty() || w.dims_size() != 1 ||
         w.data_type() != base::DataType::kDataTypeFp32) {
@@ -28,8 +28,8 @@ RmsNormLayer::RmsNormLayer(
 }
 
 base::Status RmsNormLayer::forward(
-    const TensorInputs &inputs,
-    const TensorOutputs &outputs,
+    const TensorInputs& inputs,
+    const TensorOutputs& outputs,
     const base::ExecutionContext& context) const {
     if (inputs.size() != 1 || outputs.size() != 1) {
         return {base::kInvalidArgument, "RMSNorm requires one input and one output"};
@@ -39,9 +39,9 @@ base::Status RmsNormLayer::forward(
         return {base::kInvalidArgument, "RMSNorm received a null Tensor"};
     }
 
-    const tensor::Tensor &x = *inputs[0];
-    tensor::Tensor &y = *outputs[0];
-    const tensor::Tensor &w = this->weight();
+    const tensor::Tensor& x = *inputs[0];
+    tensor::Tensor& y = *outputs[0];
+    const tensor::Tensor& w = this->weight();
 
     if (x.empty() || y.empty() || w.empty() ||
         x.dims_size() == 0 || w.dims_size() != 1) {
@@ -67,8 +67,7 @@ base::Status RmsNormLayer::forward(
         device != base::DeviceType::kDeviceGPU) {
         return {base::kInvalidArgument, "RMSNorm device is unsupported"};
     }
-    if (y.ptr<float>() == x.ptr<float>() ||
-        y.ptr<float>() == w.ptr<float>()) {
+    if (y.overlaps(x) || y.overlaps(w)) {
         return {base::kInvalidArgument, "RMSNorm requires separate output storage"};
     }
 

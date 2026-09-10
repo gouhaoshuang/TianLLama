@@ -6,9 +6,9 @@
 namespace op {
 
 base::Status AddLayer::forward(
-    const TensorInputs &inputs,
-    const TensorOutputs &outputs,
-    const base::ExecutionContext &context) const {
+    const TensorInputs& inputs,
+    const TensorOutputs& outputs,
+    const base::ExecutionContext& context) const {
 
     // 第一步：检查输入输出数量
     if (inputs.size() != 2) {
@@ -31,9 +31,9 @@ base::Status AddLayer::forward(
             "AddLayer 接收到了一个空 Tensor"};
     }
 
-    const tensor::Tensor &left = *inputs[0];
-    const tensor::Tensor &right = *inputs[1];
-    tensor::Tensor &output = *outputs[0];
+    const tensor::Tensor& left = *inputs[0];
+    const tensor::Tensor& right = *inputs[1];
+    tensor::Tensor& output = *outputs[0];
 
     // 第三步：检查数据类型
     if (left.data_type() != base::DataType::kDataTypeFp32 ||
@@ -74,6 +74,11 @@ base::Status AddLayer::forward(
         return {
             base::kInvalidArgument,
             "AddLayer Tensor memory is empty"};
+    }
+    // 新增：允许完全同区间原地，拒绝部分重叠。
+    if ((output.overlaps(left) && output.ptr<float>() != left.ptr<float>()) ||
+        (output.overlaps(right) && output.ptr<float>() != right.ptr<float>())) {
+        return {base::kInvalidArgument, "Add does not support partial overlap"};
     }
 
     switch (device_type) {

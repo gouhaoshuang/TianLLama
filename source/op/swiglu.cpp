@@ -4,9 +4,9 @@
 namespace op {
 
 base::Status SwiGLULayer::forward(
-    const TensorInputs &inputs,
-    const TensorOutputs &outputs,
-    const base::ExecutionContext &context) const {
+    const TensorInputs& inputs,
+    const TensorOutputs& outputs,
+    const base::ExecutionContext& context) const {
 
     if (inputs.size() != 2 || outputs.size() != 1) {
         return {base::kInvalidArgument, "SwiGLU requires two inputs and one output"};
@@ -15,9 +15,9 @@ base::Status SwiGLULayer::forward(
         return {base::kInvalidArgument, "SwiGLU received a null Tensor"};
     }
 
-    const auto &gate = *inputs[0];
-    const auto &up = *inputs[1];
-    auto &output = *outputs[0];
+    const auto& gate = *inputs[0];
+    const auto& up = *inputs[1];
+    auto& output = *outputs[0];
 
     if (gate.empty() || up.empty() || output.empty()) {
         return {base::kInvalidArgument, "SwiGLU received empty storage"};
@@ -38,8 +38,7 @@ base::Status SwiGLULayer::forward(
         device != base::DeviceType::kDeviceGPU) {
         return {base::kInvalidArgument, "SwiGLU device is unsupported"};
     }
-    if (output.ptr<float>() == gate.ptr<float>() ||
-        output.ptr<float>() == up.ptr<float>()) {
+    if (output.overlaps(gate) || output.overlaps(up)) {
         return {base::kInvalidArgument, "SwiGLU requires separate output storage"};
     }
     if (device == base::DeviceType::kDeviceCPU) {

@@ -26,7 +26,7 @@ base::Status SoftmaxLayer::forward(
     if (x.device_type() != y.device_type()) {
         return {base::kInvalidArgument, "Softmax devices must match"};
     }
-    if (x.ptr<float>() == y.ptr<float>()) {
+    if (x.overlaps(y)) {
         return {base::kInvalidArgument, "Softmax requires separate output storage"};
     }
 

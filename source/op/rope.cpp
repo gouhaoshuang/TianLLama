@@ -23,8 +23,8 @@ base::Status RoPELayer::forward(
         return {base::kInvalidArgument, "RoPE requires one non-null input/output"};
     }
 
-    const auto& x = *inputs[0];
-    auto& y = *outputs[0];
+    const tensor::Tensor& x = *inputs[0];
+    tensor::Tensor& y = *outputs[0];
 
     if (x.empty() ||
         y.empty() ||
@@ -41,11 +41,12 @@ base::Status RoPELayer::forward(
         y.data_type() != base::DataType::kDataTypeFp32) {
         return {base::kInvalidArgument, "RoPE supports FP32 only"};
     }
+
     if (x.device_type() != y.device_type()) {
         return {base::kInvalidArgument, "RoPE devices must match"};
     }
 
-    if (x.ptr<float>() == y.ptr<float>()) {
+    if (x.overlaps(y)) {
         return {base::kInvalidArgument, "RoPE requires separate output storage"};
     }
 
@@ -57,6 +58,7 @@ base::Status RoPELayer::forward(
         }
         return kernel::rope_cpu(x, y, position_, theta_);
     }
+
     if (x.device_type() == base::DeviceType::kDeviceGPU) {
         return kernel::rope_cuda(x, y, position_, theta_, context.stream);
     }

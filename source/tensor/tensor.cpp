@@ -26,7 +26,7 @@ std::size_t data_type_size(base::DataType data_type) {
 }
 
 std::size_t compute_numel(
-    const std::vector<std::int64_t> &dims) {
+    const std::vector<std::int64_t>& dims) {
     if (dims.empty()) {
         throw std::invalid_argument(
             "Tensor dimensions cannot be empty");
@@ -76,16 +76,52 @@ Tensor::Tensor(
     : dims_(std::move(dims)),
       data_type_(data_type),
       size_(compute_numel(dims_)),
-      buffer_(
+      buffer_(std::make_shared<base::Buffer>(
           compute_byte_size(size_, data_type_),
-          std::move(allocator)) {
-    if (buffer_.empty()) {
+          std::move(allocator))) {
+
+    if (buffer_->empty()) {
         throw std::bad_alloc();
     }
 }
 
+Tensor::Tensor(
+    std::vector<std::int64_t> dims,
+    base::DataType data_type,
+    std::shared_ptr<base::Buffer> buffer,
+    std::size_t byte_offset)
+    : dims_(std::move(dims)),
+      data_type_(data_type),
+      size_(compute_numel(dims_)),
+      buffer_(std::move(buffer)),
+      byte_offset_(byte_offset) {}
+
 bool Tensor::empty() const {
-    return buffer_.ptr() == nullptr;
+    return !buffer_ || buffer_->ptr() == nullptr;
+}
+
+Tensor Tensor::view(
+    std::vector<int64_t> dims,
+    std::size_t offset) {
+    if (empty())
+        throw std::invalid_argument("Cannot view an empty Tensor");
+
+    const auto count = compute_numel(dims);
+
+    if (offset > size_ || count > size_ - offset) {
+        throw std::out_of_range("Tensor view exceeds parent range");
+    }
+
+    const auto offset_bytes = compute_byte_size(offset, data_type_);
+    return Tensor(std::move(dims), data_type_, buffer_, byte_offset_ + offset_bytes);
+}
+
+bool Tensor::overlaps(const Tensor& other) const {
+    if (empty() || other.empty() || buffer_ != other.buffer_)
+        return false;
+
+    return byte_offset_ < other.byte_offset_ + other.byte_size() &&
+           other.byte_offset_ < byte_offset_ + byte_size();
 }
 
 std::size_t Tensor::dims_size() const {
@@ -96,7 +132,7 @@ std::int64_t Tensor::dim(size_t index) const {
     return dims_.at(index);
 }
 
-bool Tensor::same_shape(const Tensor &other) const {
+bool Tensor::same_shape(const Tensor& other) const {
     return dims_ == other.dims_;
 }
 
@@ -104,16 +140,16 @@ std::size_t Tensor::size() const {
     return size_;
 }
 std::size_t Tensor::byte_size() const {
-    return buffer_.byte_size();
+    return buffer_->byte_size();
 }
-const std::vector<std::int64_t> &Tensor::dims() const {
+const std::vector<std::int64_t>& Tensor::dims() const {
     return dims_;
 }
 base::DataType Tensor::data_type() const {
     return data_type_;
 }
 base::DeviceType Tensor::device_type() const {
-    return buffer_.device_type();
+    return buffer_->device_type();
 }
 
 } // namespace tensor

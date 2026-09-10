@@ -92,6 +92,7 @@ base::Status softmax_cuda(
     if (status != cudaSuccess) {
         return cuda_error(status, "softmax kernel execution");
     }
+    return {};
 }
 
 } // namespace kernel

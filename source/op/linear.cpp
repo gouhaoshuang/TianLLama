@@ -11,7 +11,7 @@ LinearLayer::LinearLayer(
     std::shared_ptr<const tensor::Tensor> weight)
     : LayerParam(weight) {
 
-    const tensor::Tensor &w = this->weight();
+    const tensor::Tensor& w = this->weight();
 
     if (w.empty() || w.dims_size() != 2 ||
         w.data_type() != base::DataType::kDataTypeFp32) {
@@ -24,9 +24,9 @@ LinearLayer::LinearLayer(
 }
 
 base::Status LinearLayer::forward(
-    const TensorInputs &inputs,
-    const TensorOutputs &outputs,
-    const base::ExecutionContext &context) const {
+    const TensorInputs& inputs,
+    const TensorOutputs& outputs,
+    const base::ExecutionContext& context) const {
 
     if (inputs.size() != 1 || outputs.size() != 1) {
         return {base::kInvalidArgument, "Linear requires one input and one output"};
@@ -36,9 +36,9 @@ base::Status LinearLayer::forward(
         return {base::kInvalidArgument, "Linear received a null Tensor"};
     }
 
-    const tensor::Tensor &x = *inputs[0];
-    tensor::Tensor &y = *outputs[0];
-    const tensor::Tensor &w = this->weight();
+    const tensor::Tensor& x = *inputs[0];
+    tensor::Tensor& y = *outputs[0];
+    const tensor::Tensor& w = this->weight();
 
     if (x.empty() || y.empty() || w.empty()) {
         return {base::kInvalidArgument, "Linear received empty storage"};
@@ -70,11 +70,10 @@ base::Status LinearLayer::forward(
         return {base::kInvalidArgument, "Linear shape mismatch: X[M,K], W[N,K], Y[M,N]"};
     }
 
-    if (y.ptr<float>() == x.ptr<float>() ||
-        y.ptr<float>() == w.ptr<float>()) {
+    if (y.overlaps(x) || y.overlaps(w)) {
         return {base::kInvalidArgument, "Linear requires separate output storage"};
     }
-    
+
     if (device == base::DeviceType::kDeviceCPU) {
         return kernel::linear_cpu(x, w, y);
     }
