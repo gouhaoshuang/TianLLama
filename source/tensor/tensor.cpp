@@ -140,7 +140,7 @@ std::size_t Tensor::size() const {
     return size_;
 }
 std::size_t Tensor::byte_size() const {
-    return buffer_->byte_size();
+    return compute_byte_size(size_, data_type_);
 }
 const std::vector<std::int64_t>& Tensor::dims() const {
     return dims_;
