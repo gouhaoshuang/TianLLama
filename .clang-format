@@ -17,3 +17,7 @@ AllowAllArgumentsOnNextLine: false
 PointerAlignment: Left
 ReferenceAlignment: Left
 DerivePointerAlignment: false  # 不根据现有代码风格自动推断，始终使用上述设置。
+
+
+# 没有 else 的简短 if 语句允许放在同一行
+AllowShortIfStatementsOnASingleLine: WithoutElse
