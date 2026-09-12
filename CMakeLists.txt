@@ -119,6 +119,8 @@ add_executable(test_rope_softmax test/op/test_rope_softmax.cpp)
 target_link_libraries(test_rope_softmax PRIVATE tianllama GTest::gtest_main)
 add_executable(test_attention test/op/test_attention.cpp)
 target_link_libraries(test_attention PRIVATE tianllama GTest::gtest_main)
+add_executable(test_decoder_block test/model/test_decoder_block.cpp)
+target_link_libraries(test_decoder_block PRIVATE tianllama GTest::gtest_main)
 
 gtest_discover_tests(test_allocator)
 gtest_discover_tests(test_add_layer)
@@ -127,6 +129,8 @@ gtest_discover_tests(test_linear_layer)
 gtest_discover_tests(test_ffn_layer)
 gtest_discover_tests(test_rope_softmax)
 gtest_discover_tests(test_attention)
+gtest_discover_tests(test_decoder_block)
+
 
 enable_testing()
 
