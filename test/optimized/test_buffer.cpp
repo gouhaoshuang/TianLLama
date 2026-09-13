@@ -2,20 +2,20 @@
 
 #include <cuda_runtime_api.h>
 
+#include<gtest/gtest.h>
 #include<memory>
 #include<cassert>
 #include <iostream>
 
 
-int main(){
+TEST(BufferTest, test_buffer){
     auto allocator = std::make_shared<base::CPUDeviceAllocator>();
 
 
     {
         base::Buffer buffer(32, allocator);
-
-        assert(buffer.ptr() != nullptr);
-        assert(buffer.byte_size() == 32);
+        EXPECT_TRUE(buffer.ptr() != nullptr);
+        EXPECT_TRUE(buffer.byte_size() == 32);
     }
 
     float* external_ptr = new float[32];
@@ -27,13 +27,10 @@ int main(){
             base::DeviceType::kDeviceCPU
         );
 
-        assert(buffer.is_external());
-        assert(buffer.ptr() == external_ptr);
+        EXPECT_TRUE(buffer.is_external());
+        EXPECT_TRUE(buffer.ptr() == external_ptr);
+        
     }
-
     external_ptr[0] = 1.0F;
     delete[] external_ptr;
-
-    std::cout << "All Buffer tests passed\n";
-    return 0;
 }
