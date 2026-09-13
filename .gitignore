@@ -7,3 +7,5 @@ samples/
 /build-cuda-debug/
 /build-ncu/
 /reports/
+/test_data/
+**/__pycache__
