@@ -1,4 +1,5 @@
 #pragma once
+#include "op/rope.h"
 #include "tensor/tensor.h"
 #include <cstdint>
 
@@ -7,11 +8,13 @@ namespace kernel {
 base::Status rope_cpu(const tensor::Tensor& input,
                       tensor::Tensor& output,
                       std::int64_t position,
-                      double theta);
+                      double theta,
+                      base::RopeLayout layout = base::RopeLayout::kInterleaved);
 
 base::Status rope_cuda(const tensor::Tensor& input,
                        tensor::Tensor& output,
                        std::int64_t position,
                        double theta,
-                       void* stream = nullptr);
+                       void* stream = nullptr,
+                       base::RopeLayout layout = base::RopeLayout::kInterleaved);
 } // namespace kernel

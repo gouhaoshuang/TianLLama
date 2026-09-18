@@ -6,11 +6,11 @@
 
 namespace kernel {
 
-// Q:[H , D]
-// K:[L , H , D]
-// V:[L , H , D]
+// Q:[H_q , D]
+// K:[L , H_kv , D]
+// V:[L , H_kv , D]
 
-// socres:[H , L]
+// socres:[H_q , L]
 
 base::Status attention_cpu(
     const tensor::Tensor& q,
@@ -19,8 +19,10 @@ base::Status attention_cpu(
     tensor::Tensor& output) {
 
     const size_t L = static_cast<size_t>(k.dim(0));
-    const size_t H = static_cast<size_t>(q.dim(0));
+    const size_t Hq = static_cast<size_t>(q.dim(0));
+    const size_t Hkv = static_cast<size_t>(k.dim(1));
     const size_t D = static_cast<size_t>(q.dim(1));
+    const size_t group = Hq / Hkv; // Layer 已检查整除且非零。
 
     auto allocator = std::make_shared<base::CPUDeviceAllocator>();
 
@@ -30,14 +32,16 @@ base::Status attention_cpu(
     const double scale = 1.0 / std::sqrt(static_cast<double>(D));
 
     // 1. 每个 head 的当前 Q，与该 head 的所有可见 K 做点积。
-    for (std::size_t h = 0; h < H; h++) {
+    for (std::size_t h = 0; h < Hq; h++) {
+        const size_t kv_h = h / group;
+
         for (size_t s = 0; s < L; s++) {
             double dot = 0;
 
             for (size_t d = 0; d < D; d++) {
                 dot += static_cast<double>(
                     q.ptr<float>()[h * D + d] *
-                    k.ptr<float>()[(s * H * D) + h * D + d]);
+                    k.ptr<float>()[(s * Hkv * D) + kv_h * D + d]);
             }
             const double score = dot * scale;
             if (!std::isfinite(score) ||
@@ -54,13 +58,16 @@ base::Status attention_cpu(
     if (!status)
         return status;
 
-    for (size_t h = 0; h < H; h++) {
+    for (size_t h = 0; h < Hq; h++) {
+        const size_t kv_h = h / group;
+
         for (size_t d = 0; d < D; d++) {
             double sum = 0;
 
             for (size_t s = 0; s < L; s++) {
-                sum += static_cast<double>(probs.ptr<float>()[h * L + s] *
-                                           v.ptr<float>()[s * H * D + h * D + d]);
+                sum += static_cast<double>(
+                    probs.ptr<float>()[h * L + s] *
+                    v.ptr<float>()[s * Hkv * D + kv_h * D + d]);
             }
             output.ptr<float>()[h * D + d] = static_cast<float>(sum);
         }

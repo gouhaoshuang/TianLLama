@@ -5,11 +5,15 @@
 
 namespace op {
 
-RoPELayer::RoPELayer(std::int64_t position, double theta)
-    : position_(position), theta_(theta) {
+RoPELayer::RoPELayer(std::int64_t position, double theta, base::RopeLayout layout)
+    : position_(position), theta_(theta), layout_(layout) {
 
     if (position < 0 || !std::isfinite(theta) || theta <= 1.0) {
         throw std::invalid_argument("RoPE requires position >= 0 and finite theta > 1");
+    }
+    if (layout != base::RopeLayout::kInterleaved &&
+        layout != base::RopeLayout::kHalfSplit) {
+        throw std::invalid_argument("Invalid RoPE layout");
     }
 }
 
@@ -56,11 +60,11 @@ base::Status RoPELayer::forward(
                 return {base::kInvalidArgument, "RoPE input must be finite"};
             }
         }
-        return kernel::rope_cpu(x, y, position_, theta_);
+        return kernel::rope_cpu(x, y, position_, theta_, layout_);
     }
 
     if (x.device_type() == base::DeviceType::kDeviceGPU) {
-        return kernel::rope_cuda(x, y, position_, theta_, context.stream);
+        return kernel::rope_cuda(x, y, position_, theta_, context.stream, layout_);
     }
     return {base::kFunctionUnImplement, "RoPE device is not supported"};
 }

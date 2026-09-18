@@ -22,27 +22,37 @@ __global__ void rope_fp32_kernel(
     std::size_t pairs,
     std::size_t head_dim,
     std::int64_t position,
-    double theta) {
+    double theta,
+    base::RopeLayout layout) {
 
     const size_t first = blockIdx.x * blockDim.x + threadIdx.x;
     const size_t step = gridDim.x * blockDim.x;
 
-    const size_t pairs_per_head = head_dim / 2;
+    const size_t pairs_of_one_head = head_dim / 2;
 
     for (size_t pair = first; pair < pairs; pair += step) {
-        const size_t d = 2 * (pair % pairs_per_head);
-        const double frequency = pow(theta, -static_cast<double>(d) / static_cast<double>(head_dim));
+
+        const std::size_t h = pair / pairs_of_one_head;
+        const std::size_t j = pair % pairs_of_one_head;
+
+        const size_t start = h * head_dim;
+
+        const size_t d0 = layout == base::RopeLayout::kHalfSplit ? j : 2 * j;
+        const size_t d1 = layout == base::RopeLayout::kHalfSplit ? j + pairs_of_one_head : 2 * j + 1;
+
+        const size_t i0 = start + d0;
+        const size_t i1 = start + d1;
+
+        const double frequency = pow(theta, static_cast<double>(j) * -2.0 / static_cast<double>(head_dim));
 
         const double angle = static_cast<double>(position) * frequency;
         const double c = cos(angle);
         const double s = sin(angle);
 
-        const std::size_t offset = 2 * pair;
-
-        const double a = input[offset];
-        const double b = input[offset + 1];
-        output[offset] = static_cast<float>(a * c - b * s);
-        output[offset + 1] = static_cast<float>(a * s + b * c);
+        const double a = input[i0];
+        const double b = input[i1];
+        output[i0] = static_cast<float>(a * c - b * s);
+        output[i1] = static_cast<float>(a * s + b * c);
     }
 }
 
@@ -54,7 +64,8 @@ base::Status rope_cuda(const tensor::Tensor& input,
                        tensor::Tensor& output,
                        std::int64_t position,
                        double theta,
-                       void* stream) {
+                       void* stream,
+                       base::RopeLayout layout) {
 
     const base::Status valid = small_data_detail::check_finite(input, stream);
     if (!valid)
@@ -74,7 +85,8 @@ base::Status rope_cuda(const tensor::Tensor& input,
         pairs,
         head_dim,
         position,
-        theta);
+        theta,
+        layout);
 
     cudaError_t status = cudaGetLastError();
     if (status != cudaSuccess) {

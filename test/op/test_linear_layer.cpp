@@ -12,7 +12,7 @@ namespace {
 std::shared_ptr<tensor::Tensor> make_weight(
     int64_t N,
     int64_t K,
-    const std::vector<float> &values) {
+    const std::vector<float>& values) {
     std::shared_ptr<base::CPUDeviceAllocator> allocator = std::make_shared<base::CPUDeviceAllocator>();
 
     std::shared_ptr<tensor::Tensor> weight = std::make_shared<tensor::Tensor>(
@@ -25,6 +25,23 @@ std::shared_ptr<tensor::Tensor> make_weight(
     }
     std::copy(values.begin(), values.end(), weight->ptr<float>());
     return weight;
+}
+std::shared_ptr<tensor::Tensor> make_linear_data(
+    const std::vector<int64_t>& shape,
+    const std::vector<float>& values,
+    const std::shared_ptr<base::DeviceAllocator>& allocator) {
+    auto t = std::make_shared<tensor::Tensor>(
+        shape,
+        base::DataType::kDataTypeFp32,
+        allocator);
+    if (t->size() != values.size())
+        throw std::invalid_argument("Linear test data size mismatch");
+    if (allocator->device_type() == base::DeviceType::kDeviceCPU)
+        std::copy(values.begin(), values.end(), t->ptr<float>());
+    else
+        allocator->memcpy(values.data(), t->ptr<float>(), t->byte_size(),
+                          base::MemcpyKind::kMemcpyCPU2GPU); // 默认流同步上传
+    return t;
 }
 
 } // namespace
@@ -43,7 +60,7 @@ TEST(LinearLayerTest, CpuFixedNonSquareAndRepeat) {
     std::copy(input.begin(), input.end(), x.ptr<float>());
 
     op::LinearLayer layer(w);
-    const op::Layer &base_layer = layer; // 验证统一多态接口。
+    const op::Layer& base_layer = layer; // 验证统一多态接口。
 
     for (int repeat = 0; repeat < 2; ++repeat) {
 
@@ -141,4 +158,43 @@ TEST(LinearLayerTest, CudaFixedNonSquare) {
         EXPECT_NEAR(actual[i], expected[i], 1e-5F) << "GPU index=" << i;
         EXPECT_NEAR(actual[i], y_cpu.ptr<float>()[i], 1e-5F) << "CPU/GPU index=" << i;
     }
+}
+
+TEST(LinearLayerTest, CpuOptionalBiasAndValidation) {
+    auto cpu = std::make_shared<base::CPUDeviceAllocator>();
+    auto w = make_linear_data({3,2}, {1,0, 0,1, 1,1}, cpu);
+    auto b = make_linear_data({3}, {0.5F,-1,2}, cpu);
+    auto x = make_linear_data({2,2}, {1,2, 3,4}, cpu);
+    tensor::Tensor y({2,3}, base::DataType::kDataTypeFp32, cpu);
+    const std::vector<float> plain{1,2,3, 3,4,7};
+    const std::vector<float> biased{1.5F,1,5, 3.5F,3,9};
+
+    op::LinearLayer no_bias(w);
+    auto status = no_bias.forward({x.get()}, {&y});
+    ASSERT_TRUE(status) << status.get_err_message();
+    for (std::size_t i = 0; i < plain.size(); ++i)
+        EXPECT_FLOAT_EQ(y.ptr<float>()[i], plain[i]);
+
+    op::LinearLayer with_bias(w, b);
+    for (int repeat = 0; repeat < 2; ++repeat) {
+        std::fill_n(y.ptr<float>(), y.size(), 123.0F);
+        status = with_bias.forward({x.get()}, {&y});
+        ASSERT_TRUE(status) << status.get_err_message();
+        for (std::size_t i = 0; i < biased.size(); ++i)
+            EXPECT_FLOAT_EQ(y.ptr<float>()[i], biased[i]);
+    }
+
+    auto wrong_length = make_linear_data({2}, {0,0}, cpu);
+    auto wrong_rank = make_linear_data({1,3}, {0,0,0}, cpu);
+    EXPECT_THROW((void)op::LinearLayer(w, wrong_length), std::invalid_argument);
+    EXPECT_THROW((void)op::LinearLayer(w, wrong_rank), std::invalid_argument);
+
+    // 用同一份 bias 存储构造 [1,N] 输出，验证 overlap，而不触发 shape 错误。
+    auto x_one = x->view({1,2});
+    auto alias_output = b->view({1,3});
+    status = with_bias.forward({&x_one}, {&alias_output});
+    EXPECT_EQ(status.get_err_code(), base::kInvalidArgument);
+    EXPECT_FLOAT_EQ(b->ptr<float>()[0], 0.5F);
+    EXPECT_FLOAT_EQ(b->ptr<float>()[1], -1.0F);
+    EXPECT_FLOAT_EQ(b->ptr<float>()[2], 2.0F);
 }

@@ -10,16 +10,16 @@ namespace {
 
 const int kThreads = 128;
 
-base::Status cuda_error(cudaError_t status, const char *operation) {
+base::Status cuda_error(cudaError_t status, const char* operation) {
     return {
         base::kInternalError,
-        std::string(operation) + ": " + cudaGetErrorString(status)
-    };
+        std::string(operation) + ": " + cudaGetErrorString(status)};
 }
 __global__ void linear_fp32_kernel(
-    const float *x,
-    const float *w,
-    float *y,
+    const float* x,
+    const float* w,
+    const float* b,
+    float* y,
     size_t K,
     size_t N) {
 
@@ -37,8 +37,8 @@ __global__ void linear_fp32_kernel(
     __shared__ Reduce::TempStorage storage;
 
     const float sum = Reduce(storage).Sum(local_sum);
-    if(tid == 0){
-        y[index] = sum;
+    if (tid == 0) {
+        y[index] = b ? sum + b[n] : sum;
     }
 }
 
@@ -48,10 +48,11 @@ namespace kernel {
 
 // X: [M , K] , W: [N , K] , Y: [M , N]
 base::Status linear_cuda(
-    const tensor::Tensor &input,
-    const tensor::Tensor &weight,
-    tensor::Tensor &output,
-    void *stream) {
+    const tensor::Tensor& input,
+    const tensor::Tensor& weight,
+    tensor::Tensor& output,
+    void* stream,
+    const tensor::Tensor* bias) {
 
     const size_t K = static_cast<size_t>(input.dim(1));
     const size_t N = static_cast<size_t>(weight.dim(0));
@@ -63,12 +64,14 @@ base::Status linear_cuda(
         return {base::kInvalidArgument, "Linear output count exceeds launch limits"};
     }
 
+    const float* b = bias ? bias->ptr<float>() : nullptr; // 仅取设备地址
+
     const cudaStream_t cuda_stream = static_cast<cudaStream_t>(stream);
     linear_fp32_kernel<<<
         static_cast<unsigned int>(blocks),
         kThreads,
         0,
-        cuda_stream>>>(input.ptr<float>(), weight.ptr<float>(), output.ptr<float>(), K, N);
+        cuda_stream>>>(input.ptr<float>(), weight.ptr<float>(), b, output.ptr<float>(), K, N);
 
     cudaError_t status = cudaGetLastError();
     if (status != cudaSuccess) {

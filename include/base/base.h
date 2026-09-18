@@ -2,9 +2,9 @@
 #include <cstdint>
 #include <string>
 
-namespace base{
+namespace base {
 
-enum class DeviceType : uint8_t{
+enum class DeviceType : uint8_t {
     kDeviceUnknown = 0,
     kDeviceCPU = 1,
     kDeviceGPU = 2,
@@ -24,7 +24,7 @@ enum class DataType : uint8_t {
     kDataTypeInt8 = 3,
 };
 
-enum  StatusCode : uint8_t {
+enum StatusCode : uint8_t {
     kSuccess = 0,
     kFunctionUnImplement = 1,
     kPathNotValid = 2,
@@ -34,13 +34,17 @@ enum  StatusCode : uint8_t {
     kInvalidArgument = 7,
 };
 
-class Status{
+enum class RopeLayout {
+    kInterleaved,
+    kHalfSplit
+};
 
-public:
+class Status {
+
+  public:
     Status(
         int code = StatusCode::kSuccess,
-        std::string message = ""
-    );
+        std::string message = "");
 
     Status(const Status& other) = default;
     Status& operator=(const Status& other) = default;
@@ -53,17 +57,15 @@ public:
 
     operator bool() const;
 
-    int32_t  get_err_code() const;
+    int32_t get_err_code() const;
 
     const std::string& get_err_message() const;
 
-    void set_err_message(const std::string& message) ;
+    void set_err_message(const std::string& message);
 
-
-private:
+  private:
     int code_ = StatusCode::kSuccess;
     std::string message_;
 };
 
-
-}
+} // namespace base

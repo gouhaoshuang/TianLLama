@@ -195,3 +195,31 @@ TEST(CudaRoPESoftmaxTest, RejectsNaN) {
     auto after_softmax = copy_to_cpu(y);
     expect_values(after_softmax, {123, 123, 123, 123});
 }
+
+TEST(RoPETest, CpuTwoLayoutsSmallValues) {
+    auto x = make_input({1,4}, {1,2,3,4});
+    auto y = make_input({1,4}, {123,123,123,123});
+    const float c0 = static_cast<float>(std::cos(1.0));
+    const float s0 = static_cast<float>(std::sin(1.0));
+    const float c1 = static_cast<float>(std::cos(0.1));
+    const float s1 = static_cast<float>(std::sin(0.1));
+
+    // 不传 layout：检查默认仍是相邻配对 (1,2)、(3,4)。
+    op::RoPELayer interleaved(1, 100.0);
+    auto status = interleaved.forward({&x}, {&y});
+    ASSERT_TRUE(status) << status.get_err_message();
+    expect_values(y, {c0-2*s0, s0+2*c0, 3*c1-4*s1, 3*s1+4*c1});
+
+    // 半区配对 (1,3)、(2,4)，结果写回各自原通道。
+    op::RoPELayer half_split(1, 100.0, base::RopeLayout::kHalfSplit);
+    status = half_split.forward({&x}, {&y});
+    ASSERT_TRUE(status) << status.get_err_message();
+    expect_values(y, {c0-3*s0, 2*c1-4*s1, s0+3*c0, 2*s1+4*c1});
+    expect_values(x, {1,2,3,4}); // 不覆盖输入。
+
+    op::RoPELayer zero(0, 100.0, base::RopeLayout::kHalfSplit);
+    status = zero.forward({&x}, {&y});
+    ASSERT_TRUE(status) << status.get_err_message();
+    expect_values(y, {1,2,3,4});
+}
+

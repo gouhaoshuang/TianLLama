@@ -228,3 +228,37 @@ TEST(AttentionTest, IncrementalMatchesFullCausal) {
         if (position == 0) expect_data(output, v[0]); // 一个 key 的概率必为 1。
     }
 }
+
+TEST(AttentionTest, GqaSmallValues) {
+    auto q = make_data({4,2}, {1,0, 1,0, 1,0, 1,0});
+    // 按 token 排列：每个 token 内先 KV 头 0，再 KV 头 1。
+    auto k = make_data({2,2,2}, {
+        0,0,  0,0,   // token 0
+        1,0, -1,0    // token 1
+    });
+    auto v = make_data({2,2,2}, {
+        2,4, 10,20,  // token 0
+        6,8, 30,40   // token 1
+    });
+    auto y = make_data({4,2}, {123,123,123,123,123,123,123,123});
+
+    op::AttentionLayer attention;
+    const auto status = attention.forward({&q, &k, &v}, {&y});
+    ASSERT_TRUE(status) << status.get_err_message();
+
+    const float p = static_cast<float>(1.0 / (1.0 + std::exp(-1.0 / std::sqrt(2.0))));
+    const float a = 2 + 4*p, b = 4 + 4*p;
+    const float c = 10 + 20*(1-p), d = 20 + 20*(1-p);
+    expect_data(y, {a,b, a,b, c,d, c,d});
+}
+TEST(AttentionTest, MqaAveragesTwoTokens) {
+    auto q = make_data({4,2}, {0,0, 0,0, 0,0, 0,0});
+    auto k = make_data({2,1,2}, {1,2, 3,4});
+    auto v = make_data({2,1,2}, {2,4, 6,8});
+    auto y = make_data({4,2}, {123,123,123,123,123,123,123,123});
+
+    op::AttentionLayer attention;
+    const auto status = attention.forward({&q, &k, &v}, {&y});
+    ASSERT_TRUE(status) << status.get_err_message();
+    expect_data(y, {4,6, 4,6, 4,6, 4,6});
+}
