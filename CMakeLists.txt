@@ -1,18 +1,29 @@
-cmake_minimum_required(VERSION 3.18)
-
-project(TianLLama LANGUAGES CXX CUDA)
+cmake_minimum_required(VERSION 3.19)
+project(TianLLama LANGUAGES C CXX CUDA)
 
 find_package(CUDAToolkit REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 
 include(GoogleTest)
+include(FetchContent)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
     set(CMAKE_CUDA_ARCHITECTURES 89)
 endif()
+
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+FetchContent_Declare(tokenizers_cpp
+    GIT_REPOSITORY https://github.com/mlc-ai/tokenizers-cpp.git
+    GIT_TAG c586c52f93f7b060753bd2388eb96a105cb7374d
+    GIT_SUBMODULES_RECURSE TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json tokenizers_cpp)
 
 
 file(
@@ -24,6 +35,7 @@ file(
 
 add_library(tianllama
     ${TIANLLAMA_SOURCES}
+
 )
 
 target_include_directories(tianllama
@@ -41,11 +53,11 @@ set_target_properties(tianllama PROPERTIES
     CUDA_STANDARD_REQUIRED ON
 )
 
-target_link_libraries(tianllama
-    PUBLIC
-    CUDA::cudart
+target_link_libraries(tianllama PUBLIC CUDA::cudart)
+target_link_libraries(tianllama PRIVATE
+    tokenizers_cpp
+    nlohmann_json::nlohmann_json
 )
-
 
 add_executable(test_allocator test/optimized/test_allocator.cpp)
 target_link_libraries(test_allocator PRIVATE tianllama GTest::gtest_main)
@@ -72,6 +84,11 @@ target_link_libraries(test_qwen2_layer0 PRIVATE tianllama GTest::gtest_main)
 target_compile_definitions(test_qwen2_layer0 PRIVATE
     QWEN_LAYER0_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_data/qwen2_5_0_5b_layer0_v1"
 )
+add_executable(test_qwen_tokenizer test/tokenizer/test_qwen_tokenizer.cpp)
+target_link_libraries(test_qwen_tokenizer PRIVATE tianllama GTest::gtest_main nlohmann_json::nlohmann_json)
+target_compile_definitions(test_qwen_tokenizer PRIVATE
+    QWEN_MODEL_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_data/qwen2_5_0_5b_model_v2"
+)
 
 gtest_discover_tests(test_buffer)
 gtest_discover_tests(test_tensor)
@@ -84,5 +101,6 @@ gtest_discover_tests(test_rope_softmax)
 gtest_discover_tests(test_attention)
 gtest_discover_tests(test_decoder_block)
 gtest_discover_tests(test_qwen2_layer0)
+gtest_discover_tests(test_qwen_tokenizer)
 
 enable_testing()

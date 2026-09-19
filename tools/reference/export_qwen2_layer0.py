@@ -25,7 +25,6 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
-
     args = parser.parse_args()
 
     if args.out.exists():
