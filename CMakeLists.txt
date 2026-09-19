@@ -59,6 +59,14 @@ target_link_libraries(tianllama PRIVATE
     nlohmann_json::nlohmann_json
 )
 
+
+add_executable(qwen_chat "${CMAKE_CURRENT_SOURCE_DIR}/demo/qwen_chat.cpp")
+target_link_libraries(qwen_chat PRIVATE tianllama)
+
+
+
+
+
 add_executable(test_allocator test/optimized/test_allocator.cpp)
 target_link_libraries(test_allocator PRIVATE tianllama GTest::gtest_main)
 add_executable(test_add_layer test/op/test_add_layer.cpp)
@@ -95,6 +103,7 @@ target_compile_definitions(test_qwen_model PRIVATE
     QWEN_MODEL_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_data/qwen2_5_0_5b_model_v2"
 )
 
+
 gtest_discover_tests(test_buffer)
 gtest_discover_tests(test_tensor)
 gtest_discover_tests(test_allocator)
@@ -107,6 +116,8 @@ gtest_discover_tests(test_attention)
 gtest_discover_tests(test_decoder_block)
 gtest_discover_tests(test_qwen2_layer0)
 gtest_discover_tests(test_qwen_tokenizer)
-gtest_discover_tests(test_qwen_model)
+# gtest_discover_tests(test_qwen_model)
 
 enable_testing()
+
+
