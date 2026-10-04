@@ -53,7 +53,6 @@ inline std::vector<float> read_fp32(
     return values;
 }
 
-
 inline tensor::Tensor make_cpu(
     const std::vector<std::int64_t>& shape,
     const std::vector<float>& values) {
@@ -63,8 +62,6 @@ inline tensor::Tensor make_cpu(
     write_fp32(result, values);
     return result;
 }
-
-
 
 // 已有 Tensor -> 已有 Tensor，支持四种设备复制方向。
 inline void copy_fp32(
@@ -112,7 +109,6 @@ inline tensor::Tensor to_cpu(const tensor::Tensor& src,
     return result;
 }
 
-
 // expected 是手算或其他参考数据；默认只使用绝对误差。
 inline void expect_near(const tensor::Tensor& actual,
                         const std::vector<float>& expected,
@@ -124,9 +120,12 @@ inline void expect_near(const tensor::Tensor& actual,
     for (std::size_t i = 0; i < values.size(); ++i) {
         ASSERT_TRUE(std::isfinite(values[i])) << "index=" << i;
         ASSERT_TRUE(std::isfinite(expected[i])) << "index=" << i;
-        EXPECT_LE(std::abs(double(values[i]) - double(expected[i])),
-                  atol + rtol * std::abs(double(expected[i])))
-            << "index=" << i << " actual=" << values[i] << " expected=" << expected[i];
+        ASSERT_LE(
+            std::abs(double(values[i]) - double(expected[i])),
+            atol + rtol * std::abs(double(expected[i])))
+            << "index=" << i
+            << " actual=" << values[i]
+            << " expected=" << expected[i];
     }
 }
 

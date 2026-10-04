@@ -18,6 +18,45 @@ namespace model {
 constexpr auto fp32 = base::DataType::kDataTypeFp32;
 
 namespace {
+
+std::shared_ptr<base::DeviceAllocator> make_allocator(base::DeviceType device) {
+    if (device == base::DeviceType::kDeviceCPU)
+        return std::make_shared<base::CPUDeviceAllocator>();
+    if (device == base::DeviceType::kDeviceGPU)
+        return std::make_shared<base::CUDADeviceAllocator>();
+    throw std::invalid_argument("Qwen requires CPU or GPU device");
+}
+
+bool is_fp32_on(const tensor::Tensor& t,
+                const std::vector<int64_t>& shape,
+                base::DeviceType device) {
+    return !t.empty() && t.device_type() == device &&
+           t.data_type() == fp32 && t.dims() == shape;
+}
+
+// 调用前已确认是非空 FP32 Tensor；显存先读回，再在 CPU 检查。
+bool all_finite(const tensor::Tensor& t) {
+    if (t.empty() || t.data_type() != fp32)
+        return false;
+
+    const float* data = nullptr;
+    std::vector<float> host;
+    if (t.device_type() == base::DeviceType::kDeviceCPU) {
+        data = t.ptr<float>();
+    } else if (t.device_type() == base::DeviceType::kDeviceGPU) {
+        host.resize(t.size());
+        base::CUDADeviceAllocator copier;
+        copier.memcpy(t.ptr<float>(), host.data(), t.byte_size(), base::MemcpyKind::kMemcpyGPU2CPU, nullptr, true);
+        data = host.data();
+    } else {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < t.size(); ++i)
+        if (!std::isfinite(data[i])) return false;
+    return true;
+}
+
 QwenModelConfig check_model_config(QwenModelConfig c) {
     const auto& block_config = c.block;
     if (c.num_layers <= 0 || c.vocab_size <= 0 || c.vocab_size > INT32_MAX ||
@@ -31,23 +70,22 @@ QwenModelConfig check_model_config(QwenModelConfig c) {
     return c;
 }
 
-void require_model_weight(const Qwen2Weight& weights,
-                          const std::vector<int64_t>& shape) {
-    if (!weights || weights->empty() || weights->dims() != shape ||
-        weights->device_type() != base::DeviceType::kDeviceCPU ||
-        weights->data_type() != base::DataType::kDataTypeFp32)
-        throw std::invalid_argument("Invalid model weight");
-    for (std::size_t i = 0; i < weights->size(); ++i)
-        if (!std::isfinite(weights->ptr<float>()[i]))
-            throw std::invalid_argument("Non-finite model weight");
+void require_model_weight(const Qwen2Weight& weight,
+                          const std::vector<int64_t>& shape,
+                          base::DeviceType device) {
+    if (!weight || !is_fp32_on(*weight, shape, device) || !all_finite(*weight))
+        throw std::invalid_argument("Invalid or non-finite model weight");
 }
 
 QwenModelWeights check_model_weights(const QwenModelConfig& c,
                                      QwenModelWeights weights) {
     if (weights.layers.size() != static_cast<std::size_t>(c.num_layers))
         throw std::invalid_argument("Layer count mismatch");
-    require_model_weight(weights.embedding, {c.vocab_size, c.block.dim});
-    require_model_weight(weights.final_norm, {c.block.dim});
+    require_model_weight(weights.embedding,
+                         {c.vocab_size, c.block.dim},
+                         c.block.device);
+    require_model_weight(weights.final_norm, {c.block.dim}, c.block.device);
+
     if (weights.lm_head != weights.embedding)
         throw std::invalid_argument("This model requires tied embedding/lm_head");
     // 各层形状和有限值由 Qwen2DecoderLayer 构造函数继续检查。
@@ -55,6 +93,7 @@ QwenModelWeights check_model_weights(const QwenModelConfig& c,
 }
 
 Qwen2Config checked_config(Qwen2Config c) {
+
     if (c.dim <= 0 || c.hidden_dim <= 0 || c.q_heads <= 0 ||
         c.kv_heads <= 0 || c.head_dim <= 0 || c.capacity <= 0 ||
         c.q_heads % c.kv_heads != 0 || c.head_dim % 2 != 0 ||
@@ -67,46 +106,36 @@ Qwen2Config checked_config(Qwen2Config c) {
         throw std::overflow_error("Qwen2 projection dimension overflow");
     return c;
 }
-bool is_cpu_fp32(const tensor::Tensor& t, const std::vector<int64_t>& shape) {
-    return !t.empty() && t.device_type() == base::DeviceType::kDeviceCPU &&
-           t.data_type() == fp32 && t.dims() == shape;
-}
-
-bool all_finite(const tensor::Tensor& t) {
-    // 仅在已确认 CPU FP32 后调用。
-    for (std::size_t i = 0; i < t.size(); ++i)
-        if (!std::isfinite(t.ptr<float>()[i])) return false;
-    return true;
-}
 
 void require_weight(const Qwen2Weight& weights,
                     const std::vector<int64_t>& shape,
-                    const char* name) {
-    if (!weights || !is_cpu_fp32(*weights, shape) || !all_finite(*weights))
+                    const char* name,
+                    base::DeviceType device) {
+    if (!weights || !is_fp32_on(*weights, shape, device) || !all_finite(*weights))
         throw std::invalid_argument(std::string("Invalid Qwen2 weight: ") + name);
 }
 
 Qwen2AttentionWeights checked_attention_weights(
     const Qwen2Config& c,
     const Qwen2AttentionWeights& weights) {
-    require_weight(weights.wq, {c.q_dim(), c.dim}, "wq");
-    require_weight(weights.wk, {c.kv_dim(), c.dim}, "wk");
-    require_weight(weights.wv, {c.kv_dim(), c.dim}, "wv");
-    require_weight(weights.wo, {c.dim, c.q_dim()}, "wo");
-    require_weight(weights.bq, {c.q_dim()}, "bq");
-    require_weight(weights.bk, {c.kv_dim()}, "bk");
-    require_weight(weights.bv, {c.kv_dim()}, "bv");
+    require_weight(weights.wq, {c.q_dim(), c.dim}, "wq", c.device);
+    require_weight(weights.wk, {c.kv_dim(), c.dim}, "wk", c.device);
+    require_weight(weights.wv, {c.kv_dim(), c.dim}, "wv", c.device);
+    require_weight(weights.wo, {c.dim, c.q_dim()}, "wo", c.device);
+    require_weight(weights.bq, {c.q_dim()}, "bq", c.device);
+    require_weight(weights.bk, {c.kv_dim()}, "bk", c.device);
+    require_weight(weights.bv, {c.kv_dim()}, "bv", c.device);
     return weights;
 }
 
 Qwen2LayerWeights checked_layer_weights(
     const Qwen2Config& c,
     const Qwen2LayerWeights& weights) {
-    require_weight(weights.attention_norm, {c.dim}, "attention_norm");
-    require_weight(weights.ffn_norm, {c.dim}, "ffn_norm");
-    require_weight(weights.gate, {c.hidden_dim, c.dim}, "gate");
-    require_weight(weights.up, {c.hidden_dim, c.dim}, "up");
-    require_weight(weights.down, {c.dim, c.hidden_dim}, "down");
+    require_weight(weights.attention_norm, {c.dim}, "attention_norm", c.device);
+    require_weight(weights.ffn_norm, {c.dim}, "ffn_norm", c.device);
+    require_weight(weights.gate, {c.hidden_dim, c.dim}, "gate", c.device);
+    require_weight(weights.up, {c.hidden_dim, c.dim}, "up", c.device);
+    require_weight(weights.down, {c.dim, c.hidden_dim}, "down", c.device);
     // attention 的全部参数由随后构造的 Qwen2Attention 校验。
     return weights;
 }
@@ -139,21 +168,21 @@ Qwen2Attention::Qwen2Attention(Qwen2Config config, const Qwen2AttentionWeights& 
       v_proj_(weights_.wv, weights_.bv),
       o_proj_(weights_.wo),
 
-      cpu_allocator_(std::make_shared<base::CPUDeviceAllocator>()),
-      cache_(config_.capacity, config_.kv_heads, config_.head_dim),
+      allocator_(make_allocator(config_.device)),
+      cache_(config_.capacity, config_.kv_heads, config_.head_dim, allocator_),
 
-      q_({1, config_.q_dim()}, fp32, cpu_allocator_),
-      k_({1, config_.kv_dim()}, fp32, cpu_allocator_),
-      q_rot_({config_.q_heads, config_.head_dim}, fp32, cpu_allocator_),
-      a_({config_.q_heads, config_.head_dim}, fp32, cpu_allocator_) {}
+      q_({1, config_.q_dim()}, fp32, allocator_),
+      k_({1, config_.kv_dim()}, fp32, allocator_),
+      q_rot_({config_.q_heads, config_.head_dim}, fp32, allocator_),
+      a_({config_.q_heads, config_.head_dim}, fp32, allocator_) {}
 
 base::Status Qwen2Attention::forward(
     const tensor::Tensor& n,
     tensor::Tensor& out) {
     if (failed_)
         return {base::kInternalError, "Qwen2Attention failed; reset first"};
-    if (!is_cpu_fp32(n, {1, config_.dim}) ||
-        !is_cpu_fp32(out, {1, config_.dim}) || out.overlaps(n) ||
+    if (!is_fp32_on(n, {1, config_.dim}, config_.device) ||
+        !is_fp32_on(out, {1, config_.dim}, config_.device) || out.overlaps(n) ||
         overlaps_attention(out, weights_))
         return {base::kInvalidArgument, "Invalid Qwen2Attention input/output"};
     if (!all_finite(n))
@@ -209,23 +238,23 @@ Qwen2DecoderLayer::Qwen2DecoderLayer(
       ffn_norm_(weights_.ffn_norm, config_.epsilon),
       attention_(config_, weights_.attention),
       gate_proj_(weights_.gate), up_proj_(weights_.up), down_proj_(weights_.down),
-      cpu_allocator_(std::make_shared<base::CPUDeviceAllocator>()),
+      allocator_(make_allocator(config_.device)),
 
-      n_({1, config_.dim}, fp32, cpu_allocator_),
-      attn_out_({1, config_.dim}, fp32, cpu_allocator_),
-      h_({1, config_.dim}, fp32, cpu_allocator_),
-      z_({1, config_.dim}, fp32, cpu_allocator_),
-      gate_({1, config_.hidden_dim}, fp32, cpu_allocator_),
-      up_({1, config_.hidden_dim}, fp32, cpu_allocator_),
-      act_({1, config_.hidden_dim}, fp32, cpu_allocator_),
-      down_({1, config_.dim}, fp32, cpu_allocator_) {}
+      n_({1, config_.dim}, fp32, allocator_),
+      attn_out_({1, config_.dim}, fp32, allocator_),
+      h_({1, config_.dim}, fp32, allocator_),
+      z_({1, config_.dim}, fp32, allocator_),
+      gate_({1, config_.hidden_dim}, fp32, allocator_),
+      up_({1, config_.hidden_dim}, fp32, allocator_),
+      act_({1, config_.hidden_dim}, fp32, allocator_),
+      down_({1, config_.dim}, fp32, allocator_) {}
 
 base::Status Qwen2DecoderLayer::forward(
     const tensor::Tensor& x,
     tensor::Tensor& y) {
     if (failed())
         return {base::kInternalError, "Qwen2DecoderLayer failed; reset first"};
-    if (!is_cpu_fp32(x, {1, config_.dim}) || !is_cpu_fp32(y, {1, config_.dim}) ||
+    if (!is_fp32_on(x, {1, config_.dim}, config_.device) || !is_fp32_on(y, {1, config_.dim}, config_.device) ||
         y.overlaps(x) || overlaps_attention(y, weights_.attention) ||
         overlaps_any(y, {weights_.attention_norm, weights_.ffn_norm, weights_.gate, weights_.up, weights_.down}))
         return {base::kInvalidArgument, "Invalid Qwen2DecoderLayer input/output"};
@@ -284,15 +313,15 @@ Qwen2Model::Qwen2Model(QwenModelConfig config, QwenModelWeights weights)
     : config_(check_model_config(config)),
       weights_(check_model_weights(config_, std::move(weights))),
 
-      cpu_allocator_(std::make_shared<base::CPUDeviceAllocator>()),
+      allocator_(make_allocator(config_.block.device)),
 
       final_norm_(weights_.final_norm, config_.block.epsilon),
       lm_head_(weights_.lm_head),
 
-      hidden_a_({1, config_.block.dim}, base::DataType::kDataTypeFp32, cpu_allocator_),
-      hidden_b_({1, config_.block.dim}, base::DataType::kDataTypeFp32, cpu_allocator_),
+      hidden_a_({1, config_.block.dim}, base::DataType::kDataTypeFp32, allocator_),
+      hidden_b_({1, config_.block.dim}, base::DataType::kDataTypeFp32, allocator_),
 
-      logits_({1, config_.vocab_size}, base::DataType::kDataTypeFp32, cpu_allocator_) {
+      logits_({1, config_.vocab_size}, base::DataType::kDataTypeFp32, allocator_) {
 
     layers_.reserve(weights_.layers.size());
 
@@ -325,31 +354,43 @@ base::Status Qwen2Model::forward_token(int32_t id) {
     const size_t offset = static_cast<size_t>(id) * dim;
 
     // 词表映射
-    std::copy_n(weights_.embedding->ptr<float>() + offset, dim, hidden_a_.ptr<float>());
+    const auto kind = config_.block.device == base::DeviceType::kDeviceGPU
+                          ? base::MemcpyKind::kMemcpyGPU2GPU
+                          : base::MemcpyKind::kMemcpyCPU2CPU;
+    allocator_->memcpy(
+        weights_.embedding->ptr<float>() + offset,
+        hidden_a_.ptr<float>(),
+        hidden_a_.byte_size(),
+        kind,
+        nullptr,
+        true);
 
     tensor::Tensor* current = &hidden_a_;
     tensor::Tensor* next = &hidden_b_;
 
     for (size_t i = 0; i < layers_.size(); i++) {
         base::Status status = layers_[i]->forward(*current, *next);
+
         if (!status) {
             status.set_err_message("layer " + std::to_string(i) + ": " +
                                    status.get_err_message());
             return status;
         }
+
         if (layers_[i]->length() != length_ + 1)
             return {base::kInternalError, "Unexpected layer cache advance"};
+
         std::swap(current, next);
     }
+
     auto status = final_norm_.forward({current}, {next});
     if (!status) return status;
 
     status = lm_head_.forward({next}, {&logits_});
     if (!status) return status;
 
-    for (std::size_t i = 0; i < logits_.size(); ++i)
-        if (!std::isfinite(logits_.ptr<float>()[i]))
-            return {base::kInternalError, "Non-finite final logits"};
+    if (!all_finite(logits_))
+        return {base::kInternalError, "Non-finite final logits"};
 
     ++length_;
     failed_ = false;
@@ -374,8 +415,12 @@ void Qwen2Model::reset() {
 using json = nlohmann::json;
 std::unique_ptr<Qwen2Model> Qwen2Model::load(
     const std::filesystem::path& root,
-    int64_t capacity) {
+    int64_t capacity,
+    base::DeviceType device) {
 
+    auto allocator = make_allocator(device);
+
+    // 1. json 文件映射
     std::ifstream manifest(root / "manifest.json");
     if (!manifest) throw std::runtime_error("Missing completed manifest.json");
     const auto j = json::parse(manifest);
@@ -391,8 +436,10 @@ std::unique_ptr<Qwen2Model> Qwen2Model::load(
         throw std::invalid_argument("Unsupported model manifest");
     }
 
+    // 2. 配置读取
     QwenModelConfig config;
     Qwen2Config& block_config = config.block;
+    block_config.device = device;
 
     block_config.dim = c.at("hidden_size").get<int64_t>();
     block_config.hidden_dim = c.at("intermediate_size").get<int64_t>();
@@ -411,7 +458,9 @@ std::unique_ptr<Qwen2Model> Qwen2Model::load(
     block_config.rope_theta = c.at("rope_theta").get<double>();
     config.num_layers = c.at("num_hidden_layers").get<int64_t>();
     config.vocab_size = c.at("vocab_size").get<int64_t>();
+    config = check_model_config(config);
 
+    // 3. 权重读取
     const auto& weights_info = j.at("weights_file");
     const std::filesystem::path weights_path = root / "weights.bin";
     const auto& total_bytes = weights_info.at("nbytes");
@@ -437,8 +486,17 @@ std::unique_ptr<Qwen2Model> Qwen2Model::load(
             throw std::invalid_argument("Invalid weight offset/nbytes: " + name);
 
         // 对齐、文件边界、短读、NaN/Inf 检查由现有 utils 完成。
-        return std::make_shared<tensor::Tensor>(
-            base::read_f32(weights_path, expected, offset.get<std::uint64_t>()));
+        auto host = base::read_f32(
+            weights_path,
+            expected,
+            offset.get<std::uint64_t>());
+
+        if (device == base::DeviceType::kDeviceCPU)
+            return std::make_shared<tensor::Tensor>(std::move(host));
+            
+        auto target = std::make_shared<tensor::Tensor>(expected, fp32, allocator);
+        allocator->memcpy(host.ptr<float>(), target->ptr<float>(), host.byte_size(), base::MemcpyKind::kMemcpyCPU2GPU, nullptr, true);
+        return target;
     };
 
     // 3. 按现有权重结构赋值，24 层只是重复同一组加载操作。

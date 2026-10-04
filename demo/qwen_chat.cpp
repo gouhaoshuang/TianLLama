@@ -1,5 +1,6 @@
 #include "model/qwen2.h"
 #include "tokenizer/qwen_tokenizer.h"
+#include <chrono>
 
 #include <cmath>
 #include <cstdint>
@@ -13,18 +14,32 @@
 
 namespace {
 
-int32_t greedy_token(const tensor::Tensor& logits) {
+int32_t greedy_token(const tensor::Tensor& logits,
+                     std::vector<float>& host_logits) {
+
+    const auto device = logits.device_type();
+
     if (logits.empty() || logits.dims_size() != 2 || logits.dim(0) != 1 ||
         logits.data_type() != base::DataType::kDataTypeFp32 ||
-        logits.device_type() != base::DeviceType::kDeviceCPU ||
-        logits.dim(1) > std::numeric_limits<int32_t>::max()) {
+        logits.dim(1) <= 0 ||
+        logits.dim(1) > std::numeric_limits<int32_t>::max() ||
+        (device != base::DeviceType::kDeviceCPU &&
+         device != base::DeviceType::kDeviceGPU)) {
         throw std::invalid_argument("Expected CPU FP32 logits [1, vocab_size]");
     }
 
     const float* scores = logits.ptr<float>();
+
+    if (device == base::DeviceType::kDeviceGPU) {
+        host_logits.resize(logits.size());
+        base::CUDADeviceAllocator copier;
+        copier.memcpy(logits.ptr<float>(), host_logits.data(), logits.byte_size(), base::MemcpyKind::kMemcpyGPU2CPU, nullptr, true);
+        scores = host_logits.data();
+    }
+
     const int64_t vocal_size = logits.dim(1);
     int32_t best = 0;
-    for (int64_t i = 0; i < vocal_size; i++) {
+    for (int64_t i = 0; i < logits.dim(1); ++i) {
         if (!std::isfinite(scores[i]))
             throw std::runtime_error("Non-finite logits");
         if (scores[i] > scores[best])
@@ -62,10 +77,10 @@ void print_ready_text(const std::string& decoded,
     std::size_t pos = emitted.size();
     while (pos < end) {
         const auto lead = static_cast<unsigned char>(decoded[pos]);
-        const std::size_t width = lead < 0x80 ? 1 :
-                                  (lead & 0xE0) == 0xC0 ? 2 :
-                                  (lead & 0xF0) == 0xE0 ? 3 :
-                                  (lead & 0xF8) == 0xF0 ? 4 : 0;
+        const std::size_t width = lead < 0x80 ? 1 : (lead & 0xE0) == 0xC0 ? 2
+                                                : (lead & 0xF0) == 0xE0   ? 3
+                                                : (lead & 0xF8) == 0xF0   ? 4
+                                                                          : 0;
         if (width == 0 || width > end - pos)
             throw std::runtime_error("Unexpected UTF-8 boundary in decoded text");
 
@@ -81,6 +96,9 @@ void answer_once(model::Qwen2Model& model,
                  tokenizer::QwenTokenizer& tokenizer,
                  const std::string& question,
                  int64_t max_new_tokens) {
+
+    using Clock = std::chrono::steady_clock;
+
     if (max_new_tokens <= 0)
         throw std::invalid_argument("max_new_tokens must be positive");
     model.reset();
@@ -107,8 +125,10 @@ void answer_once(model::Qwen2Model& model,
               << std::endl;
 
     // prefill
+    const auto prefill_begin = Clock::now();
     for (int32_t id : prompt_ids)
         forward_checked(model, id);
+    const auto prefill_end = Clock::now();
 
     std::cout << "正在生成回答，最多 " << max_new_tokens
               << " 个 token。\n回答：\n"
@@ -119,8 +139,11 @@ void answer_once(model::Qwen2Model& model,
     std::string emitted;
     std::string stop_reason = "达到生成数量上限，回答可能尚未结束";
 
+    std::vector<float> host_logits;
+
+    const auto generation_begin = Clock::now();
     for (int64_t step = 0; step < max_new_tokens; ++step) {
-        const int32_t next = greedy_token(model.logits());
+        const int32_t next = greedy_token(model.logits(), host_logits);
 
         // 当前固定检查点的 generation_config.json 中有这两个 EOS。
         // <|im_end|> = 151645；<|endoftext|> = 151643。
@@ -155,10 +178,27 @@ void answer_once(model::Qwen2Model& model,
 
     if (emitted.empty())
         std::cout << "（没有生成可显示的文本）";
+
+    std::cout.flush();
+    const auto generation_end = Clock::now();
+
+    const double prefill_ms =
+        std::chrono::duration<double, std::milli>(prefill_end - prefill_begin).count();
+    const double generation_s =
+        std::chrono::duration<double>(generation_end - generation_begin).count();
+    const double tokens_per_second = generation_s > 0.0
+                                         ? static_cast<double>(generated.size()) / generation_s
+                                         : 0.0;
+
     std::cout << "\n[生成 " << generated.size() << " 个 token；"
               << stop_reason << "]\n";
-}
 
+    std::cout << "[性能] prompt=" << prompt_ids.size()
+              << " tokens, prefill=" << prefill_ms << " ms; generated="
+              << generated.size() << " tokens, generation="
+              << generation_s * 1000.0 << " ms; output="
+              << tokens_per_second << " tokens/s\n";
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -168,13 +208,20 @@ int main(int argc, char** argv) {
     //     return 1;
     // }
 
-    const std::filesystem::path root = "/data/ghs/TianLLama/test_data/qwen2_5_0_5b_model_v2";
+    const std::filesystem::path root =
+        argc > 1
+            ? std::filesystem::path(argv[1])
+            : std::filesystem::path(
+                  "/data/ghs/TianLLama/test_data/qwen2_5_0_5b_model_v2");
+
     const int64_t capacity = 1024;
 
     constexpr int64_t max_new_tokens = 512;
-    std::cout << "正在加载 CPU FP32 模型，请等待..." << std::endl;
+    // std::cout << "正在加载 CPU FP32 模型，请等待..." << std::endl;
 
-    auto model = model::Qwen2Model::load(root, capacity);
+    std::cout << "正在加载 GPU FP32 模型，请等待..." << std::endl;
+
+    auto model = model::Qwen2Model::load(root, capacity, base::DeviceType::kDeviceGPU);
     tokenizer::QwenTokenizer tokenizer((root / "tokenizer.json").string());
 
     std::cout << "模型已加载。输入 /exit 退出；每次提问都是独立请求。\n";

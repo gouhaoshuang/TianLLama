@@ -6,6 +6,7 @@ samples/
 .agent/
 /build-cuda-debug/
 /build-ncu/
+/build-release/
 /reports/
 /test_data/
 **/__pycache__

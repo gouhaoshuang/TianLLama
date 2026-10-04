@@ -107,7 +107,7 @@ target_link_libraries(test_attention_cuda PRIVATE tianllama GTest::gtest_main)
 
 
 foreach(test_target IN ITEMS
-    test_attention_cuda test_attention test_rope_softmax
+    test_attention_cuda test_attention test_rope_softmax test_qwen_model
     test_linear_layer test_rmsnorm_layer test_ffn_layer test_kv_cache)
     target_include_directories(${test_target} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test/common")
@@ -128,7 +128,7 @@ gtest_discover_tests(test_qwen2_layer0)
 gtest_discover_tests(test_qwen_tokenizer)
 gtest_discover_tests(test_kv_cache)
 gtest_discover_tests(test_attention_cuda)
-# gtest_discover_tests(test_qwen_model)
+gtest_discover_tests(test_qwen_model)
 
 enable_testing()
 

@@ -15,9 +15,10 @@ namespace model {
 
 using Qwen2Weight = std::shared_ptr<const tensor::Tensor>;
 
-
-
 struct Qwen2Config {
+
+    base::DeviceType device = base::DeviceType::kDeviceCPU;
+
     int64_t dim = 0;
     int64_t hidden_dim = 0;
     int64_t q_heads = 0;
@@ -76,7 +77,7 @@ class Qwen2Attention {
 
     op::LinearLayer q_proj_, k_proj_, v_proj_, o_proj_;
     op::AttentionLayer attention_;
-    std::shared_ptr<base::CPUDeviceAllocator> cpu_allocator_;
+    std::shared_ptr<base::DeviceAllocator> allocator_;
 
     base::KVCache cache_;
     tensor::Tensor q_, k_, q_rot_, a_;
@@ -106,22 +107,23 @@ class Qwen2DecoderLayer {
     op::SwiGLULayer swiglu_;
     op::AddLayer add_;
 
-    std::shared_ptr<base::CPUDeviceAllocator> cpu_allocator_;
+    std::shared_ptr<base::DeviceAllocator> allocator_;
     tensor::Tensor n_, attn_out_, h_, z_, gate_, up_, act_, down_;
     bool failed_ = false;
 };
 
-class  Qwen2Model {
+class Qwen2Model {
 
   public:
-     Qwen2Model(QwenModelConfig config, QwenModelWeights weights);
+    Qwen2Model(QwenModelConfig config, QwenModelWeights weights);
 
-     Qwen2Model(const  Qwen2Model&) = delete;
-     Qwen2Model& operator=(const  Qwen2Model&) = delete;
+    Qwen2Model(const Qwen2Model&) = delete;
+    Qwen2Model& operator=(const Qwen2Model&) = delete;
 
-    static std::unique_ptr< Qwen2Model> load(
+    static std::unique_ptr<Qwen2Model> load(
         const std::filesystem::path& root,
-        int64_t capacity = 1024);
+        int64_t capacity = 1024,
+        base::DeviceType device = base::DeviceType::kDeviceCPU);
 
     base::Status forward_token(int32_t token_id);
 
@@ -136,7 +138,7 @@ class  Qwen2Model {
     QwenModelConfig config_;
     QwenModelWeights weights_;
 
-    std::shared_ptr<base::CPUDeviceAllocator> cpu_allocator_;
+    std::shared_ptr<base::DeviceAllocator> allocator_;
     std::vector<std::unique_ptr<Qwen2DecoderLayer>> layers_;
 
     op::RmsNormLayer final_norm_;

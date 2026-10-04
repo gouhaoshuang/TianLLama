@@ -26,6 +26,7 @@ tensor::Tensor read_f32(const std::filesystem::path& path,
 
     tensor::Tensor result(shape, DataType::kDataTypeFp32, std::make_shared<CPUDeviceAllocator>());
 
+    // 2. 文件体积检查
     const size_t bytes = result.byte_size();
     const auto file_bytes = std::filesystem::file_size(path);
 
@@ -39,7 +40,7 @@ tensor::Tensor read_f32(const std::filesystem::path& path,
         throw std::overflow_error("File range exceeds stream limits");
     }
 
-    // 把读取位置移动到“文件开头加 offset 字节”
+    // 3. 把读取位置移动到“文件开头加 offset 字节”
     file.seekg(static_cast<std::streamoff>(offset_bytes), std::ios::beg);
     if (!file)
         throw std::runtime_error("Cannot seek: " + path.string());
