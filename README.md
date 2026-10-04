@@ -2,43 +2,42 @@
 
 从零逐步实现的 C++ / CUDA 大语言模型推理框架，参考 KuiperLLama 的设计与课程，围绕真实模型学习内存管理、张量、算子、KV Cache 和自回归推理。
 
-项目以 **Qwen2.5-0.5B-Instruct** 为首个目标模型。目前已实现 CPU FP32 全模型前向、Tokenizer 和贪心生成 Demo，同时保留基础算子的 CUDA 实现。当前重点是理解实现、验证数值正确性，再逐步完善 GPU 执行与性能。
+项目以 **Qwen2.5-0.5B-Instruct** 为首个目标模型。目前已实现 CPU / GPU FP32 全模型前向、Tokenizer、GPU 贪心生成 Demo，以及 prompt / 生成耗时和 token 输出速率记录。当前重点是验证完整模型的数值正确性，逐步减少 GPU 执行中的数据回读、临时分配和同步开销。
 
-> 这是持续迭代中的学习型项目，不是生产级推理服务。基础算子支持 CUDA，不代表完整模型已经支持 GPU 推理。
+> 当前是单 GPU、单请求、固定容量 KV Cache 的学习型实现。GPU 路径使用默认 stream 和同步执行，部分有限值检查会将数据读回 CPU，性能优化仍在推进。
 
 ## 当前能力
 
-| 模块       | 已实现内容                                                                            |
-| ---------- | ------------------------------------------------------------------------------------- |
-| 内存与设备 | CPU / GPU 分配器、内存复制与清零、Buffer RAII                                         |
-| Tensor     | 连续存储、共享底层 Buffer 的视图、偏移与重叠检查                                      |
-| 基础算子   | Add、RMSNorm、带可选 bias 的 Linear、SwiGLU、RoPE、稳定 Softmax；包含 CPU / CUDA 实现 |
-| Attention  | CPU MHA / GQA / MQA，固定容量、逐 token 更新的 KV Cache                               |
-| 模型组件   | 通用 CPU DecoderBlock，以及适配 Qwen2 的 Attention / DecoderLayer                     |
-| 完整模型   | 权重加载、Embedding 查表、24 层前向、最终 RMSNorm、共享权重的词表投影                 |
-| Tokenizer  | 基于 tokenizers-cpp 的编码与解码、单轮 Qwen 聊天模板                                  |
-| 生成 Demo  | CPU FP32 贪心生成、结束 token 与长度限制、独立请求重置                                |
-| 正确性验证 | 小数据单元测试、真实单层参考、全模型 logits、Tokenizer 与聊天输入对齐测试             |
+模块已实现内容内存与设备CPU / GPU 分配器、内存复制与清零、Buffer RAIITensor连续存储、共享底层 Buffer 的视图、偏移与重叠检查基础算子Add、RMSNorm、带可选 bias 的 Linear、SwiGLU、RoPE、稳定 Softmax；包含 CPU / CUDA 实现AttentionCPU MHA / GQA / MQA、CUDA GQA Attention，CPU / GPU 固定容量 KV Cache模型组件通用 CPU DecoderBlock，以及支持 CPU / GPU 的 Qwen2 Attention / DecoderLayer完整模型CPU / GPU 设备选择、逐份权重上传、Embedding 行复制、24 层前向、最终 RMSNorm 和共享词表投影Tokenizer基于 tokenizers-cpp 的编码与解码、单轮 Qwen 聊天模板生成 DemoGPU FP32 贪心生成、GPU logits 读回后 CPU argmax、累积解码、结束条件与独立请求重置性能记录prompt token 数与前向耗时、实际生成 token 数、生成耗时和输出 tokens/s正确性测试算子与 Cache 小数据测试、真实 CPU 单层参考、Tokenizer 对齐、GPU 全模型 logits 与 reset
 
 当前推理计算以 FP32 为主。数据类型枚举中存在 FP16 / Int8，不表示已完成相应推理或量化支持。
 
-## 推理流程
+## GPU Demo 推理流程
 
 ```text
 用户文本 → 聊天模板 → Tokenizer → token IDs
                                       ↓
-                                 Embedding 查表
+                              GPU Embedding 行复制
                                       ↓
-                       Qwen2DecoderLayer × 24 + KV Cache
+                   GPU Qwen2DecoderLayer × 24 + GPU KV Cache
                                       ↓
-                           最终 RMSNorm → 输出 Linear
+                         GPU 最终 RMSNorm → 输出 Linear
                                       ↓
-                                  logits → argmax
+                           GPU logits → 读回 CPU → argmax
                                       ↓
                         新 token 回送模型，解码并输出文本
 ```
 
 Python 仅用于模型资产准备、权重导出和生成参考答案；C++ Demo 的推理过程不启动 Python。
+
+模型接口默认选择 CPU，也可显式选择 GPU：
+
+```cpp
+auto cpu_model = model::Qwen2Model::load(root, capacity);
+auto gpu_model = model::Qwen2Model::load(root, capacity, base::DeviceType::kDeviceGPU);
+```
+
+GPU 模式下，权重、中间 Tensor、每层 KV Cache 和词表投影均位于 GPU；CPU 负责分词、调度、最终 token 选择和文本输出。Embedding 与输出投影共享同一份权重，GPU 加载不重复上传词表矩阵。
 
 ## 目录结构
 
@@ -77,11 +76,11 @@ CMake 通过 FetchContent 获取 nlohmann/json 和固定提交的 tokenizers-cpp
 在项目根目录执行：
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=89
-cmake --build build -j 4
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=89
+cmake --build build-release -j 4
 ```
 
-`89` 是项目当前默认的 CUDA 架构值；使用其他 GPU 时应按目标硬件调整。学习调试时可以使用独立的 Debug 构建目录，性能测量应使用 Release。
+`89` 是项目当前默认的 CUDA 架构值；使用其他 GPU 时应按目标硬件调整。学习调试时可以使用独立的 Debug 构建目录，性能测量应使用 Release。运行 GPU Demo 和 CUDA 测试还需要可用的 NVIDIA GPU 与驱动。
 
 ## 模型与参考数据
 
@@ -145,52 +144,83 @@ qwen2_5_0_5b_model_v2/
 无需真实模型数据的测试：
 
 ```bash
-ctest --test-dir build --output-on-failure \
+ctest --test-dir build-release --output-on-failure \
   -E 'Qwen2Layer0Test|QwenTokenizerTest|QwenModelRealTest'
 ```
+
+这组测试仍包含 CUDA 算子和 GPU Cache 测试，需要可用的 GPU。
 
 准备好两套参考数据后，运行当前注册到 CTest 的测试：
 
 ```bash
-ctest --test-dir build --output-on-failure
+CUDA_VISIBLE_DEVICES=0 ctest --test-dir build-release --output-on-failure
 ```
 
-**当前 CMake 中全模型测试的自动注册被注释，但仍会构建 `test_qwen_model`。** 全模型测试需单独运行：
+GPU Cache 与 Attention 的小数据测试也可以单独运行：
 
 ```bash
-./build/test_qwen_model --gtest_filter=QwenModelRealTest.ShortLogitsAndReset
-./build/test_qwen_model --gtest_filter=QwenModelRealTest.ChatTokenizerAndLogits
+CUDA_VISIBLE_DEVICES=0 ctest --test-dir build-release --output-on-failure \
+  -R '^(KVCacheTest|AttentionCudaTest)\.'
 ```
 
-前者比较短序列每个位置的完整 logits，并检查 reset 后重新推理；后者连接聊天模板、C++ Tokenizer 和完整模型，与聊天参考 logits 比较。CPU 全模型测试比算子测试耗时更长。
+**全模型测试已注册到 CTest。** 当前启用的用例是 `QwenModelRealTest.GpuShortLogitsAndReset`，也可直接执行：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 ./build-release/test_qwen_model \
+  --gtest_filter=QwenModelRealTest.GpuShortLogitsAndReset
+```
+
+该测试运行真实模型的全部 24 层，检查短序列每个位置的完整 GPU logits、各层 Cache 长度，以及 reset 后首 token 的结果。GPU 输出读回 CPU 后与参考 Tensor 比较，当前误差阈值为 `1e-3 + 1e-4 * abs(reference)`。
+
+原来的 CPU 全模型 `ShortLogitsAndReset` 和 `ChatTokenizerAndLogits` 用例目前在源码中被注释，不参与测试；CPU 真实单层和独立 Tokenizer 测试仍保留。
 
 测试数据目录由 `CMakeLists.txt` 中的编译定义指定。缺少数据时，相关测试会失败，不能把未运行真实模型测试视为全模型验证通过。
 
 ## 运行聊天 Demo
 
 ```bash
-./build/qwen_chat
+CUDA_VISIBLE_DEVICES=0 ./build-release/qwen_chat \
+  test_data/qwen2_5_0_5b_model_v2
 ```
 
-当前 Demo 的配置写在 `demo/qwen_chat.cpp` 中：
+第一个命令行参数是模型导出目录。省略参数时，程序使用源码中的默认目录：
 
 | 配置              | 当前值                                                  |
 | ----------------- | ------------------------------------------------------- |
 | 模型目录          | `/data/ghs/TianLLama/test_data/qwen2_5_0_5b_model_v2` |
+| 执行设备          | GPU / FP32                                              |
 | KV Cache 容量     | 1024 token                                              |
 | 最大新增 token 数 | 512                                                     |
 | 选择方式          | Greedy / argmax                                         |
 | 退出指令          | `/exit`                                               |
 
-当前不解析命令行模型路径参数。在其他机器或目录使用时，需要手动修改上述源码配置并重新编译。每次提问会 reset，**不保留上一轮对话历史**；prompt 与生成预算之和不能超过缓存容量。
+KV Cache 容量、生成预算和执行设备当前仍写在 `demo/qwen_chat.cpp` 中，没有对应的命令行选项。每次提问会 reset，**不保留上一轮对话历史**；prompt 与最大生成预算之和不能超过缓存容量，超过时会报错。
 
-Demo 的文本输出仍在调试：当前逐 token 单独解码，中文或跨 token 的 UTF-8 字节可能显示为替换字符。代码中已有累积解码辅助函数，但当前输出路径未启用它，不应把逐 token 显示当作完善的流式解码实现。
+文本输出使用累积 token IDs 解码，只打印新增的完整 UTF-8 字符。生成遇到结束 token 或达到长度上限后停止；当前 EOS 为 `<|im_end|>` 和 `<|endoftext|>`。模型与 Tokenizer 只在启动时加载一次。
+
+### 性能记录
+
+每次回答结束后，Demo 输出一行 `[性能]` 记录：
+
+| 字段                           | 含义                                                 |
+| ------------------------------ | ---------------------------------------------------- |
+| `prompt` / `prefill`       | 输入 token 数与逐 token prompt 前向耗时，单位 ms     |
+| `generated` / `generation` | 实际生成 token 数（不含 EOS）与生成阶段耗时，单位 ms |
+| `output`                     | 实际生成 token 数除以生成阶段秒数，单位 tokens/s     |
+
+统计不包含模型加载、聊天模板构造和分词。生成耗时包含模型前向、GPU logits 读回、CPU argmax、解码和终端打印，因此 `output` 是当前 Demo 的输出速率，不是纯 GPU kernel 吞吐，也不是包含 prompt 耗时的总请求吞吐。
+
+第一枚生成 token 使用最后一次 prompt 前向的 logits；达到生成上限时，输出 N 枚 token 通常只需 N−1 次生成阶段前向。只生成零个或一个 token 时，不适合据此判断持续生成速度。
+
+使用 Release 构建，在同一进程先运行一个短请求预热，再重复相同问题记录结果。对比时保持 GPU、prompt、缓存容量、生成预算和打印方式一致，并记录实际生成数量。
 
 ## 后续方向
 
-- 完善生成结果对齐、UTF-8 流式输出、异常处理和命令行配置。
-- 补齐 GPU KV Cache、GQA Attention 与 Qwen2 全模型执行路径。
-- 在 CPU / GPU 数值对齐后建立性能基准，再优化工作区复用与内核同步。
+- 恢复 CPU 全模型回归，扩展 GPU 聊天输入与生成结果对齐。
+- 减少模型与 Attention 的有限值回读，避免加载时重复扫描 GPU 权重。
+- 复用 Attention 的 scores / probs 工作区，再逐步减少逐算子同步。
+- 跳过非最后一个 prompt token 的词表投影，进一步优化 prefill。
+- 完善请求级异常处理与容量、生成长度等命令行配置。
 - 根据实际需要逐步探索量化、批量推理和更多模型，不提前增加复杂抽象。
 
 ## 参考与致谢
