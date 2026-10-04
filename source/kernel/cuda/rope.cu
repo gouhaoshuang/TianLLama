@@ -1,5 +1,5 @@
 
-#include "finite_check.cuh"
+#include "cuda_utils.cuh"
 #include "kernel/rope.h"
 #include <cmath>
 #include <cstddef>
@@ -10,11 +10,6 @@
 namespace {
 
 constexpr int kThreads = 128;
-
-base::Status cuda_error(cudaError_t status, const char* operation) {
-    return {base::kInternalError,
-            std::string(operation) + ": " + cudaGetErrorString(status)};
-}
 
 __global__ void rope_fp32_kernel(
     const float* input,
@@ -90,11 +85,11 @@ base::Status rope_cuda(const tensor::Tensor& input,
 
     cudaError_t status = cudaGetLastError();
     if (status != cudaSuccess) {
-        return cuda_error(status, "ROPE kernel launch");
+        return cuda_check::cuda_error(status, "ROPE kernel launch");
     }
     status = cudaStreamSynchronize(cuda_stream);
     if (status != cudaSuccess) {
-        return cuda_error(status, "ROPE kernel execution");
+        return cuda_check::cuda_error(status, "ROPE kernel execution");
     }
     return {};
 }

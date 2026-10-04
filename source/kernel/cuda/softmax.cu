@@ -1,4 +1,4 @@
-#include "finite_check.cuh"
+#include "cuda_utils.cuh"
 #include "kernel/softmax.h"
 #include <cstddef>
 #include <cub/block/block_reduce.cuh>
@@ -10,10 +10,6 @@
 namespace {
 constexpr int kThreads = 128;
 
-base::Status cuda_error(cudaError_t status, const char* operation) {
-    return {base::kInternalError,
-            std::string(operation) + ": " + cudaGetErrorString(status)};
-}
 
 __global__ void softmax_fp32_kernel(
     const float* input,
@@ -86,11 +82,11 @@ base::Status softmax_cuda(
 
     auto status = cudaGetLastError();
     if (status != cudaSuccess) {
-        return cuda_error(status, "softmax kernel launch");
+        return cuda_check::cuda_error(status, "softmax kernel launch");
     }
     status = cudaStreamSynchronize(cuda_stream);
     if (status != cudaSuccess) {
-        return cuda_error(status, "softmax kernel execution");
+        return cuda_check::cuda_error(status, "softmax kernel execution");
     }
     return {};
 }
