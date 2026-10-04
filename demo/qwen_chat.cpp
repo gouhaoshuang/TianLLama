@@ -22,18 +22,14 @@ int32_t greedy_token(const tensor::Tensor& logits) {
     }
 
     const float* scores = logits.ptr<float>();
-
     const int64_t vocal_size = logits.dim(1);
-
     int32_t best = 0;
-
     for (int64_t i = 0; i < vocal_size; i++) {
         if (!std::isfinite(scores[i]))
             throw std::runtime_error("Non-finite logits");
         if (scores[i] > scores[best])
             best = static_cast<int32_t>(i);
     }
-
     return best;
 }
 
@@ -139,8 +135,8 @@ void answer_once(model::Qwen2Model& model,
         generated.push_back(next);
 
         // 解码累积 IDs，不单独 decode({next})，也不重复打印全部文本。
-        // print_ready_text(tokenizer.decode(generated, true), emitted);
-        std::cerr << tokenizer.decode({next}, true) ;
+        print_ready_text(tokenizer.decode(generated, true), emitted);
+        // std::cerr << tokenizer.decode({next}, true) ;
 
         // 已经得到最后一个允许输出的 token，不再为它计算下一份 logits。
         if (step + 1 == max_new_tokens)
@@ -154,10 +150,9 @@ void answer_once(model::Qwen2Model& model,
     }
 
     // 结束时不再等待后续 token：把尚未显示的解码结果原样输出。
-    // print_ready_text(tokenizer.decode(generated, true), emitted, true);
+    print_ready_text(tokenizer.decode(generated, true), emitted, true);
     // std::cerr << "token ID: " << tokenizer.decode({next}, true) << '\n';
 
-    std::cout << "\n回答：\n";
     if (emitted.empty())
         std::cout << "（没有生成可显示的文本）";
     std::cout << "\n[生成 " << generated.size() << " 个 token；"
