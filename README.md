@@ -8,7 +8,18 @@
 
 ## 当前能力
 
-模块已实现内容内存与设备CPU / GPU 分配器、内存复制与清零、Buffer RAIITensor连续存储、共享底层 Buffer 的视图、偏移与重叠检查基础算子Add、RMSNorm、带可选 bias 的 Linear、SwiGLU、RoPE、稳定 Softmax；包含 CPU / CUDA 实现AttentionCPU MHA / GQA / MQA、CUDA GQA Attention，CPU / GPU 固定容量 KV Cache模型组件通用 CPU DecoderBlock，以及支持 CPU / GPU 的 Qwen2 Attention / DecoderLayer完整模型CPU / GPU 设备选择、逐份权重上传、Embedding 行复制、24 层前向、最终 RMSNorm 和共享词表投影Tokenizer基于 tokenizers-cpp 的编码与解码、单轮 Qwen 聊天模板生成 DemoGPU FP32 贪心生成、GPU logits 读回后 CPU argmax、累积解码、结束条件与独立请求重置性能记录prompt token 数与前向耗时、实际生成 token 数、生成耗时和输出 tokens/s正确性测试算子与 Cache 小数据测试、真实 CPU 单层参考、Tokenizer 对齐、GPU 全模型 logits 与 reset
+| 模块       | 已实现内容                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| 内存与设备 | CPU / GPU 分配器、内存复制与清零、Buffer RAII                                              |
+| Tensor     | 连续存储、共享底层 Buffer 的视图、偏移与重叠检查                                           |
+| 基础算子   | Add、RMSNorm、带可选 bias 的 Linear、SwiGLU、RoPE、稳定 Softmax；包含 CPU / CUDA 实现      |
+| Attention  | CPU MHA / GQA / MQA、CUDA GQA Attention，CPU / GPU 固定容量 KV Cache                       |
+| 模型组件   | 通用 CPU DecoderBlock，以及支持 CPU / GPU 的 Qwen2 Attention / DecoderLayer                |
+| 完整模型   | CPU / GPU 设备选择、逐份权重上传、Embedding 行复制、24 层前向、最终 RMSNorm 和共享词表投影 |
+| Tokenizer  | 基于 tokenizers-cpp 的编码与解码、单轮 Qwen 聊天模板                                       |
+| 生成 Demo  | GPU FP32 贪心生成、GPU logits 读回后 CPU argmax、累积解码、结束条件与独立请求重置          |
+| 性能记录   | prompt token 数与前向耗时、实际生成 token 数、生成耗时和输出 tokens/s                      |
+| 正确性测试 | 算子与 Cache 小数据测试、真实 CPU 单层参考、Tokenizer 对齐、GPU 全模型 logits 与 reset     |
 
 当前推理计算以 FP32 为主。数据类型枚举中存在 FP16 / Int8，不表示已完成相应推理或量化支持。
 
