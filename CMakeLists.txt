@@ -102,6 +102,8 @@ target_link_libraries(test_qwen_model PRIVATE tianllama GTest::gtest_main nlohma
 target_compile_definitions(test_qwen_model PRIVATE
     QWEN_MODEL_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_data/qwen2_5_0_5b_model_v2"
 )
+add_executable(test_kv_cache test/base/test_kv_cache.cpp)
+target_link_libraries(test_kv_cache PRIVATE tianllama GTest::gtest_main)
 
 
 gtest_discover_tests(test_buffer)
@@ -116,6 +118,7 @@ gtest_discover_tests(test_attention)
 gtest_discover_tests(test_decoder_block)
 gtest_discover_tests(test_qwen2_layer0)
 gtest_discover_tests(test_qwen_tokenizer)
+gtest_discover_tests(test_kv_cache)
 # gtest_discover_tests(test_qwen_model)
 
 enable_testing()
