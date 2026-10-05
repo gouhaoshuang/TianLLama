@@ -68,25 +68,16 @@ void check_lifecycle(base::KVCache& cache, base::DeviceType device) {
     EXPECT_THROW(cache.key_slot(0), std::out_of_range);
     EXPECT_EQ(cache.commit(0).get_err_code(), base::kInvalidArgument);
     EXPECT_EQ(cache.length(), 1);
-    // 3. 第二个 token 的 K 含 Inf 或 V 含 NaN，都不能提交。
+    // 3. 写入第二个 token，完整前缀必须保留第一个 token。
     auto k1 = cache.key_slot(1);
     auto v1 = cache.value_slot(1);
-    write_data(k1, {std::numeric_limits<float>::infinity(), 6});
-    write_data(v1, {7, 8});
-    EXPECT_EQ(cache.commit(1).get_err_code(), base::kInvalidArgument);
-    EXPECT_EQ(cache.length(), 1);
-
     write_data(k1, {5, 6});
-    write_data(v1, {std::numeric_limits<float>::quiet_NaN(), 8});
-    EXPECT_EQ(cache.commit(1).get_err_code(), base::kInvalidArgument);
-    EXPECT_EQ(cache.length(), 1);
-
-    // 修正后重试；完整前缀必须保留第一个 token。
     write_data(v1, {7, 8});
     ASSERT_TRUE(cache.commit(1));
     ASSERT_EQ(cache.length(), 2);
     EXPECT_EQ(read_data(cache.keys()), (std::vector<float>{1, 2, 5, 6}));
     EXPECT_EQ(read_data(cache.values()), (std::vector<float>{3, 4, 7, 8}));
+
 
     // 4. 满容量后拒绝继续写入或提交。
     EXPECT_THROW(cache.key_slot(2), std::out_of_range);

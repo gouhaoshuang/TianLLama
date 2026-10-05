@@ -62,9 +62,6 @@ base::Status rope_cuda(const tensor::Tensor& input,
                        void* stream,
                        base::RopeLayout layout) {
 
-    const base::Status valid = small_data_detail::check_finite(input, stream);
-    if (!valid)
-        return valid;
 
     const size_t heads = static_cast<size_t>(input.dim(0));
     const size_t head_dim = static_cast<size_t>(input.dim(1));

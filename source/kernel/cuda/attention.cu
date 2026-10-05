@@ -77,12 +77,6 @@ base::Status attention_cuda(const tensor::Tensor& q,
     const auto blocks = static_cast<unsigned int>(Hq);
     const double scale = 1.0 / std::sqrt(static_cast<double>(D));
 
-    for (const tensor::Tensor* t : {&q, &k, &v}) {
-        const auto status = small_data_detail::check_finite(*t, stream);
-        if (!status)
-            return status;
-    }
-
     auto allocator = std::make_shared<base::CUDADeviceAllocator>();
 
     tensor::Tensor scores({q.dim(0), k.dim(0)}, base::DataType::kDataTypeFp32, allocator);
@@ -116,12 +110,14 @@ base::Status attention_cuda(const tensor::Tensor& q,
         group);
     error = cudaGetLastError();
 
-    if (error != cudaSuccess) return cuda_check::cuda_error(error, "Attention weighted sum launch");
+    if (error != cudaSuccess)
+        return cuda_check::cuda_error(error, "Attention weighted sum launch");
 
     // 等待最后一个 kernel 完成，函数返回后临时 probs 才可以释放。
     error = cudaStreamSynchronize(cuda_stream);
-    if (error != cudaSuccess) return cuda_check::cuda_error(error, "Attention execution");
+    if (error != cudaSuccess)
+        return cuda_check::cuda_error(error, "Attention execution");
 
-    return small_data_detail::check_finite(output, stream);
+    return {};
 }
 } // namespace kernel

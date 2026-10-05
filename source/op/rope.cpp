@@ -55,11 +55,6 @@ base::Status RoPELayer::forward(
     }
 
     if (x.device_type() == base::DeviceType::kDeviceCPU) {
-        for (std::size_t i = 0; i < x.size(); ++i) {
-            if (!std::isfinite(x.ptr<float>()[i])) {
-                return {base::kInvalidArgument, "RoPE input must be finite"};
-            }
-        }
         return kernel::rope_cpu(x, y, position_, theta_, layout_);
     }
 

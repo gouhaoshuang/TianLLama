@@ -48,18 +48,14 @@ base::Status AttentionLayer::forward(
     if (y.overlaps(q) || y.overlaps(k) || y.overlaps(v)) {
         return {base::kInvalidArgument, "Attention output must not overlap inputs"};
     }
-    
+
     if (device == base::DeviceType::kDeviceGPU) {
         return kernel::attention_cuda(q, k, v, y, context.stream);
+    } else if (device == base::DeviceType::kDeviceCPU) {
+        return kernel::attention_cpu(q, k, v, y);
+    } else {
+        return {base::kFunctionUnImplement, "Attention device is not supported"};
     }
-    for (const tensor::Tensor* t : {&q, &k, &v}) {
-        for (std::size_t i = 0; i < t->size(); ++i) {
-            if (!std::isfinite(t->ptr<float>()[i])) {
-                return {base::kInvalidArgument, "Attention inputs must be finite"};
-            }
-        }
-    }
-    return kernel::attention_cpu(q, k, v, y);
 }
 
 } // namespace op

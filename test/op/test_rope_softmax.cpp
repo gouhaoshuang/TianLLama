@@ -134,12 +134,6 @@ TEST(SoftmaxTest, RejectsInvalidInput) {
     EXPECT_EQ(softmax.forward({&x}, {&x}).get_err_code(), base::kInvalidArgument);
     EXPECT_EQ(softmax.forward({nullptr}, {&y}).get_err_code(), base::kInvalidArgument);
 
-    const float inf = std::numeric_limits<float>::infinity();
-    for (float bad : {inf, -inf, std::numeric_limits<float>::quiet_NaN()}) {
-        x.ptr<float>()[2] = bad;
-        EXPECT_EQ(softmax.forward({&x}, {&y}).get_err_code(), base::kInvalidArgument);
-        expect_values(y, {123, 123, 123}); // 检查失败时尚未写输出。
-    }
 }
 
 TEST(CudaRoPESoftmaxTest, RoPEFixedValues) {
@@ -178,22 +172,6 @@ TEST(CudaRoPESoftmaxTest, SoftmaxStableRows) {
 
     auto input_after = copy_to_cpu(x);
     expect_values(input_after, {1001, 1002, 1003, -1001, -1000, -999});
-}
-
-TEST(CudaRoPESoftmaxTest, RejectsNaN) {
-    const float nan = std::numeric_limits<float>::quiet_NaN();
-    auto x = copy_to_gpu(make_input({1, 4}, {1, 2, nan, 4}));
-    auto y = copy_to_gpu(make_input({1, 4}, {123, 123, 123, 123}));
-
-    op::RoPELayer rope(1);
-    EXPECT_EQ(rope.forward({&x}, {&y}).get_err_code(), base::kInvalidArgument);
-    auto after_rope = copy_to_cpu(y);
-    expect_values(after_rope, {123, 123, 123, 123});
-
-    op::SoftmaxLayer softmax;
-    EXPECT_EQ(softmax.forward({&x}, {&y}).get_err_code(), base::kInvalidArgument);
-    auto after_softmax = copy_to_cpu(y);
-    expect_values(after_softmax, {123, 123, 123, 123});
 }
 
 TEST(RoPETest, CpuTwoLayoutsSmallValues) {

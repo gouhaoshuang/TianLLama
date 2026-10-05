@@ -21,17 +21,10 @@ DecoderConfig checked_config(DecoderConfig c) {
 bool is_cpu_fp32(const tensor::Tensor& t, const std::vector<std::int64_t>& shape) {
     return !t.empty() && t.data_type() == fp32 && t.device_type() == base::DeviceType::kDeviceCPU && t.dims() == shape;
 }
-bool all_finite(const tensor::Tensor& t) {
-    // 只允许在已经确认 CPU FP32 后调用。
-    for (std::size_t i = 0; i < t.size(); ++i) {
-        if (!std::isfinite(t.ptr<float>()[i])) return false;
-    }
-    return true;
-}
 
 std::shared_ptr<const tensor::Tensor>
 checked_weight(std::shared_ptr<const tensor::Tensor> w, const std::vector<int64_t>& shape, const char* name) {
-    if (!w || !is_cpu_fp32(*w, shape) || !all_finite(*w)) {
+    if (!w || !is_cpu_fp32(*w, shape)) {
         throw std::invalid_argument(std::string("Invalid weight: ") + name);
     }
     return w;
@@ -78,9 +71,7 @@ base::Status DecoderBlock::forward(const tensor::Tensor& x, tensor::Tensor& y) {
             return {base::kInvalidArgument, "Output must not overwrite weights"};
         }
     }
-    if (!all_finite(x)) {
-        return {base::kInvalidArgument, "Input must be finite"};
-    }
+
     if (cache_.length() >= cache_.capacity()) {
         return {base::kInvalidArgument, "KV cache is full"};
     }
@@ -147,8 +138,7 @@ base::Status DecoderBlock::forward(const tensor::Tensor& x, tensor::Tensor& y) {
     status = run(up_proj_, {&z_}, {&up_}, "up projection");
     if (!status) return status;
 
-
-     status = run(swiglu_, {&gate_, &up_}, {&act_}, "swiglu");
+    status = run(swiglu_, {&gate_, &up_}, {&act_}, "swiglu");
     if (!status) return status;
 
     status = run(down_proj_, {&act_}, {&down_}, "down projection");
@@ -157,9 +147,6 @@ base::Status DecoderBlock::forward(const tensor::Tensor& x, tensor::Tensor& y) {
     status = run(add_, {&h_, &down_}, {&y}, "ffn residual");
     if (!status) return status;
 
-    if (!all_finite(y)) {
-        return {base::kInternalError, "DecoderBlock produced non-finite output"};
-    }
     failed_ = false;
     return {};
 }

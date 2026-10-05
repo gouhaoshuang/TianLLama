@@ -44,11 +44,6 @@ base::Status attention_cpu(
                     k.ptr<float>()[(s * Hkv * D) + kv_h * D + d]);
             }
             const double score = dot * scale;
-            if (!std::isfinite(score) ||
-                std::abs(score) > std::numeric_limits<float>::max()) {
-                return {base::kInvalidArgument, "Attention score exceeds FP32 range"};
-            }
-
             scores.ptr<float>()[h * L + s] = static_cast<float>(score);
         }
     }

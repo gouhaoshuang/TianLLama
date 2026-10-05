@@ -71,9 +71,7 @@ base::Status softmax_cuda(
         rows > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
         return {base::kInvalidArgument, "Softmax row count exceeds launch limits"};
     }
-    const auto valid = small_data_detail::check_finite(input, stream);
-    if (!valid)
-        return valid;
+
     cudaStream_t cuda_stream = static_cast<cudaStream_t>(stream);
     softmax_fp32_kernel<<<rows, kThreads, 0, cuda_stream>>>(
         input.ptr<float>(),

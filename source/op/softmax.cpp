@@ -31,16 +31,12 @@ base::Status SoftmaxLayer::forward(
     }
 
     if (x.device_type() == base::DeviceType::kDeviceCPU) {
-        for (std::size_t i = 0; i < x.size(); ++i) {
-            if (!std::isfinite(x.ptr<float>()[i])) {
-                return {base::kInvalidArgument, "Softmax input must be finite"};
-            }
-        }
         return kernel::softmax_cpu(x, y);
     }
     if (x.device_type() == base::DeviceType::kDeviceGPU) {
         return kernel::softmax_cuda(x, y, context.stream);
     }
+
     return {base::kFunctionUnImplement, "Softmax device is not supported"};
 }
 

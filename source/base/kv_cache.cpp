@@ -69,45 +69,7 @@ Status KVCache::commit(int64_t position,
     if (position != length_ || length_ >= capacity()) {
         return {kInvalidArgument, "KVCache commit position is invalid"};
     }
-
-    tensor::Tensor k = key_slot(position);
-    tensor::Tensor v = value_slot(position);
-    const std::size_t count = token_size();
-
-    const float* k_data = nullptr;
-    const float* v_data = nullptr;
-
-    std::vector<float> host_k;
-    std::vector<float> host_v;
-
-    if (device_type() == DeviceType::kDeviceCPU) {
-        k_data = k.ptr<float>();
-        v_data = v.ptr<float>();
-    } else if (device_type() == DeviceType::kDeviceGPU) {
-        host_k.resize(count);
-        host_v.resize(count);
-
-        allocator_->memcpy(k.ptr<float>(),
-                           host_k.data(),
-                           k.byte_size(),
-                           MemcpyKind::kMemcpyGPU2CPU,
-                           context.stream,
-                           true);
-        allocator_->memcpy(v.ptr<float>(),
-                           host_v.data(),
-                           v.byte_size(),
-                           MemcpyKind::kMemcpyGPU2CPU,
-                           context.stream,
-                           true);
-        k_data = host_k.data();
-        v_data = host_v.data();
-    }
-
-    for (size_t i = 0; i < count; i++) {
-        if (!std::isfinite(k_data[i]) || !std::isfinite(v_data[i])) {
-            return {kInvalidArgument, "KVCache requires finite K/V"};
-        }
-    }
+    // 调用者负责完整写入 K/V，并保证后续读取的执行顺序。
     ++length_;
     return {};
 }

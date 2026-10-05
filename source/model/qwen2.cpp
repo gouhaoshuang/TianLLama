@@ -34,29 +34,6 @@ bool is_fp32_on(const tensor::Tensor& t,
            t.data_type() == fp32 && t.dims() == shape;
 }
 
-// 调用前已确认是非空 FP32 Tensor；显存先读回，再在 CPU 检查。
-bool all_finite(const tensor::Tensor& t) {
-    if (t.empty() || t.data_type() != fp32)
-        return false;
-
-    const float* data = nullptr;
-    std::vector<float> host;
-    if (t.device_type() == base::DeviceType::kDeviceCPU) {
-        data = t.ptr<float>();
-    } else if (t.device_type() == base::DeviceType::kDeviceGPU) {
-        host.resize(t.size());
-        base::CUDADeviceAllocator copier;
-        copier.memcpy(t.ptr<float>(), host.data(), t.byte_size(), base::MemcpyKind::kMemcpyGPU2CPU, nullptr, true);
-        data = host.data();
-    } else {
-        return false;
-    }
-
-    for (std::size_t i = 0; i < t.size(); ++i)
-        if (!std::isfinite(data[i])) return false;
-    return true;
-}
-
 QwenModelConfig check_model_config(QwenModelConfig c) {
     const auto& block_config = c.block;
     if (c.num_layers <= 0 || c.vocab_size <= 0 || c.vocab_size > INT32_MAX ||
@@ -73,7 +50,7 @@ QwenModelConfig check_model_config(QwenModelConfig c) {
 void require_model_weight(const Qwen2Weight& weight,
                           const std::vector<int64_t>& shape,
                           base::DeviceType device) {
-    if (!weight || !is_fp32_on(*weight, shape, device) || !all_finite(*weight))
+    if (!weight || !is_fp32_on(*weight, shape, device))
         throw std::invalid_argument("Invalid or non-finite model weight");
 }
 
@@ -88,7 +65,7 @@ QwenModelWeights check_model_weights(const QwenModelConfig& c,
 
     if (weights.lm_head != weights.embedding)
         throw std::invalid_argument("This model requires tied embedding/lm_head");
-    // 各层形状和有限值由 Qwen2DecoderLayer 构造函数继续检查。
+    // 各层形状由 Qwen2DecoderLayer 构造函数继续检查。
     return weights;
 }
 
@@ -111,7 +88,7 @@ void require_weight(const Qwen2Weight& weights,
                     const std::vector<int64_t>& shape,
                     const char* name,
                     base::DeviceType device) {
-    if (!weights || !is_fp32_on(*weights, shape, device) || !all_finite(*weights))
+    if (!weights || !is_fp32_on(*weights, shape, device))
         throw std::invalid_argument(std::string("Invalid Qwen2 weight: ") + name);
 }
 
@@ -185,8 +162,6 @@ base::Status Qwen2Attention::forward(
         !is_fp32_on(out, {1, config_.dim}, config_.device) || out.overlaps(n) ||
         overlaps_attention(out, weights_))
         return {base::kInvalidArgument, "Invalid Qwen2Attention input/output"};
-    if (!all_finite(n))
-        return {base::kInvalidArgument, "Qwen2Attention input must be finite"};
     if (length() >= config_.capacity)
         return {base::kInvalidArgument, "Qwen2Attention cache is full"};
 
@@ -222,8 +197,6 @@ base::Status Qwen2Attention::forward(
     status = run(o_proj_, {&a_row}, {&out}, "o projection");
     if (!status) return status;
 
-    if (!all_finite(out))
-        return {base::kInternalError, "Qwen2Attention produced non-finite output"};
     failed_ = false;
     return {};
 }
@@ -258,8 +231,6 @@ base::Status Qwen2DecoderLayer::forward(
         y.overlaps(x) || overlaps_attention(y, weights_.attention) ||
         overlaps_any(y, {weights_.attention_norm, weights_.ffn_norm, weights_.gate, weights_.up, weights_.down}))
         return {base::kInvalidArgument, "Invalid Qwen2DecoderLayer input/output"};
-    if (!all_finite(x))
-        return {base::kInvalidArgument, "Qwen2DecoderLayer input must be finite"};
     if (length() >= config_.capacity)
         return {base::kInvalidArgument, "Qwen2DecoderLayer cache is full"};
 
@@ -290,8 +261,6 @@ base::Status Qwen2DecoderLayer::forward(
     status = run(add_, {&h_, &down_}, {&y}, "ffn residual");
     if (!status) return status;
 
-    if (!all_finite(y))
-        return {base::kInternalError, "Qwen2DecoderLayer produced non-finite output"};
     failed_ = false;
     return {};
     /**
@@ -388,9 +357,6 @@ base::Status Qwen2Model::forward_token(int32_t id) {
 
     status = lm_head_.forward({next}, {&logits_});
     if (!status) return status;
-
-    if (!all_finite(logits_))
-        return {base::kInternalError, "Non-finite final logits"};
 
     ++length_;
     failed_ = false;
@@ -493,7 +459,7 @@ std::unique_ptr<Qwen2Model> Qwen2Model::load(
 
         if (device == base::DeviceType::kDeviceCPU)
             return std::make_shared<tensor::Tensor>(std::move(host));
-            
+
         auto target = std::make_shared<tensor::Tensor>(expected, fp32, allocator);
         allocator->memcpy(host.ptr<float>(), target->ptr<float>(), host.byte_size(), base::MemcpyKind::kMemcpyCPU2GPU, nullptr, true);
         return target;
