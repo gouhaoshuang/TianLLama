@@ -45,6 +45,7 @@ DecoderBlock::DecoderBlock(DecoderConfig config, const DecoderWeights& w)
       down_proj_(checked_weight(w.down, {config_.dim, config_.hidden_dim}, "down")),
 
       cpu_allocator_(std::make_shared<base::CPUDeviceAllocator>()),
+      attention_(config_.heads, config_.capacity, cpu_allocator_),
       cache_(config_.capacity, config_.heads, config_.dim / config_.heads),
 
       n_({1, config_.dim}, fp32, cpu_allocator_), q_({1, config_.dim}, fp32, cpu_allocator_),

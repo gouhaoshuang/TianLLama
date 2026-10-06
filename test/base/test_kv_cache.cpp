@@ -11,9 +11,7 @@ namespace {
 
 // 本文件只写入 [1, 2] 槽位，每次 data 必须恰好包含两个元素。
 void write_data(tensor::Tensor& slot, const std::vector<float>& data) {
-
     base::CPUDeviceAllocator copier;
-
     const auto kind = slot.device_type() == base::DeviceType::kDeviceGPU
                           ? base::MemcpyKind::kMemcpyCPU2GPU
                           : base::MemcpyKind::kMemcpyCPU2CPU;

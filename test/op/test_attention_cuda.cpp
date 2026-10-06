@@ -24,13 +24,11 @@ tensor::Tensor pattern(const std::vector<std::int64_t>& shape, int shift) {
 
 } // namespace
 
-
 TEST(AttentionCudaTest, GqaKnownValues) {
 
     auto q = test_utils::make_cpu({4, 2}, {1, 0, 1, 0, 1, 0, 1, 0});
     auto k = test_utils::make_cpu({2, 2, 2}, {0, 0, 0, 0, 1, 0, -1, 0});
     auto v = test_utils::make_cpu({2, 2, 2}, {2, 4, 10, 20, 6, 8, 30, 40});
-
 
     auto q_gpu = test_utils::to_gpu(q);
     auto k_gpu = test_utils::to_gpu(k);
@@ -39,14 +37,20 @@ TEST(AttentionCudaTest, GqaKnownValues) {
     auto gpu = std::make_shared<base::CUDADeviceAllocator>();
     tensor::Tensor y_gpu({4, 2}, base::DataType::kDataTypeFp32, gpu);
 
-    op::AttentionLayer attention;
+    op::AttentionLayer attention(4, 2, gpu);
     const auto status = attention.forward({&q_gpu, &k_gpu, &v_gpu}, {&y_gpu});
     ASSERT_TRUE(status) << status.get_err_message();
 
     const float p = static_cast<float>(1.0 / (1.0 + std::exp(-1.0 / std::sqrt(2.0))));
     const std::vector<float> expected{
-        2 + 4*p, 4 + 4*p, 2 + 4*p, 4 + 4*p,
-        10 + 20*(1-p), 20 + 20*(1-p), 10 + 20*(1-p), 20 + 20*(1-p)};
+        2 + 4 * p,
+        4 + 4 * p,
+        2 + 4 * p,
+        4 + 4 * p,
+        10 + 20 * (1 - p),
+        20 + 20 * (1 - p),
+        10 + 20 * (1 - p),
+        20 + 20 * (1 - p)};
     test_utils::expect_near(y_gpu, expected, 1e-5, 0.0);
 
     // CPU Q 和 GPU K/V 混用，必须在进入 kernel 前被拒绝。
@@ -68,7 +72,8 @@ TEST(AttentionCudaTest, QwenShapeWithIncrementalCache) {
     tensor::Tensor y_cpu({Hq, D}, base::DataType::kDataTypeFp32, cpu);
     tensor::Tensor y_gpu({Hq, D}, base::DataType::kDataTypeFp32, gpu);
 
-    op::AttentionLayer attention;
+    op::AttentionLayer cpu_attention(Hq, T + 1, cpu);
+    op::AttentionLayer gpu_attention(Hq, T + 1, gpu);
 
     for (std::int64_t position = 0; position < T; ++position) {
         SCOPED_TRACE(position);
@@ -89,9 +94,9 @@ TEST(AttentionCudaTest, QwenShapeWithIncrementalCache) {
         auto v_cpu = all_v.view({position + 1, Hkv, D});
         auto k_gpu = cache.keys();
         auto v_gpu = cache.values();
-        auto status = attention.forward({&q_cpu, &k_cpu, &v_cpu}, {&y_cpu});
+        auto status = cpu_attention.forward({&q_cpu, &k_cpu, &v_cpu}, {&y_cpu});
         ASSERT_TRUE(status) << status.get_err_message();
-        status = attention.forward({&q_gpu, &k_gpu, &v_gpu}, {&y_gpu});
+        status = gpu_attention.forward({&q_gpu, &k_gpu, &v_gpu}, {&y_gpu});
         ASSERT_TRUE(status) << status.get_err_message();
 
         test_utils::expect_near(y_gpu, y_cpu, 1e-5, 1e-4);

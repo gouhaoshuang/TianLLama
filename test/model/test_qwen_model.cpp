@@ -1,6 +1,7 @@
 
 #include "base/utils.h"
 #include "model/qwen2.h"
+#include "sampler/greedy_sampler.h"
 #include "test_utils.h"
 #include "tokenizer/qwen_tokenizer.h"
 #include <algorithm>

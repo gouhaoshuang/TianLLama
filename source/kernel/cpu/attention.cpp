@@ -16,18 +16,15 @@ base::Status attention_cpu(
     const tensor::Tensor& q,
     const tensor::Tensor& k,
     const tensor::Tensor& v,
-    tensor::Tensor& output) {
+    tensor::Tensor& output,
+    tensor::Tensor& scores,
+    tensor::Tensor& probs) {
 
     const size_t L = static_cast<size_t>(k.dim(0));
     const size_t Hq = static_cast<size_t>(q.dim(0));
     const size_t Hkv = static_cast<size_t>(k.dim(1));
     const size_t D = static_cast<size_t>(q.dim(1));
     const size_t group = Hq / Hkv; // Layer 已检查整除且非零。
-
-    auto allocator = std::make_shared<base::CPUDeviceAllocator>();
-
-    tensor::Tensor scores({q.dim(0), k.dim(0)}, base::DataType::kDataTypeFp32, allocator);
-    tensor::Tensor probs({q.dim(0), k.dim(0)}, base::DataType::kDataTypeFp32, allocator);
 
     const double scale = 1.0 / std::sqrt(static_cast<double>(D));
 

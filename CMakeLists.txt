@@ -104,11 +104,13 @@ add_executable(test_kv_cache test/base/test_kv_cache.cpp)
 target_link_libraries(test_kv_cache PRIVATE tianllama GTest::gtest_main)
 add_executable(test_attention_cuda test/op/test_attention_cuda.cpp)
 target_link_libraries(test_attention_cuda PRIVATE tianllama GTest::gtest_main)
-
+add_executable(test_greedy_sampler test/sampler/test_greedy_sampler.cpp)
+target_link_libraries(test_greedy_sampler PRIVATE tianllama GTest::gtest_main)
 
 foreach(test_target IN ITEMS
     test_attention_cuda test_attention test_rope_softmax test_qwen_model
-    test_linear_layer test_rmsnorm_layer test_ffn_layer test_kv_cache)
+    test_linear_layer test_rmsnorm_layer test_ffn_layer test_kv_cache
+    test_greedy_sampler)
     target_include_directories(${test_target} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test/common")
 endforeach()
@@ -128,6 +130,7 @@ gtest_discover_tests(test_qwen2_layer0)
 gtest_discover_tests(test_qwen_tokenizer)
 gtest_discover_tests(test_kv_cache)
 gtest_discover_tests(test_attention_cuda)
+gtest_discover_tests(test_greedy_sampler)
 gtest_discover_tests(test_qwen_model)
 
 enable_testing()

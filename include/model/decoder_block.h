@@ -45,11 +45,11 @@ class DecoderBlock {
     op::RmsNormLayer attention_norm_, ffn_norm_;
     op::LinearLayer q_proj_, k_proj_, v_proj_, o_proj_;
     op::LinearLayer gate_proj_, up_proj_, down_proj_;
-
+    
+    std::shared_ptr<base::CPUDeviceAllocator> cpu_allocator_;
     op::AttentionLayer attention_;
     op::SwiGLULayer swiglu_;
     op::AddLayer add_;
-    std::shared_ptr<base::CPUDeviceAllocator> cpu_allocator_;
     base::KVCache cache_;
 
     tensor::Tensor n_, q_, k_, q_rot_, a_, attn_out_, h_;

@@ -65,6 +65,8 @@ base::Status attention_cuda(const tensor::Tensor& q,
                             const tensor::Tensor& k,
                             const tensor::Tensor& v,
                             tensor::Tensor& output,
+                            tensor::Tensor& scores,
+                            tensor::Tensor& probs,
                             void* stream) {
 
     const size_t L = static_cast<size_t>(k.dim(0));
@@ -76,11 +78,6 @@ base::Status attention_cuda(const tensor::Tensor& q,
 
     const auto blocks = static_cast<unsigned int>(Hq);
     const double scale = 1.0 / std::sqrt(static_cast<double>(D));
-
-    auto allocator = std::make_shared<base::CUDADeviceAllocator>();
-
-    tensor::Tensor scores({q.dim(0), k.dim(0)}, base::DataType::kDataTypeFp32, allocator);
-    tensor::Tensor probs({q.dim(0), k.dim(0)}, base::DataType::kDataTypeFp32, allocator);
 
     const cudaStream_t cuda_stream = static_cast<cudaStream_t>(stream);
 

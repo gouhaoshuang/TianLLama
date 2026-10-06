@@ -2,8 +2,33 @@
 
 #include "kernel/attention.h"
 #include <cmath>
-
+#include <stdexcept>
 namespace op {
+
+AttentionLayer::AttentionLayer(
+    int64_t heads,
+    int64_t capacity,
+    std::shared_ptr<base::DeviceAllocator> allocator) {
+
+    if (heads <= 0 || capacity <= 0 || !allocator) {
+        throw std::invalid_argument("Invalid Attention workspace configuration");
+    }
+
+    const auto device = allocator->device_type();
+
+    if (device != base::DeviceType::kDeviceCPU &&
+        device != base::DeviceType::kDeviceGPU)
+        throw std::invalid_argument("Unsupported Attention workspace device");
+
+    scores_storage_ = std::make_unique<tensor::Tensor>(
+        std::vector<int64_t>{heads, capacity},
+        base::DataType::kDataTypeFp32,
+        allocator);
+    probs_storage_ = std::make_unique<tensor::Tensor>(
+        std::vector<int64_t>{heads, capacity},
+        base::DataType::kDataTypeFp32,
+        allocator);
+}
 
 base::Status AttentionLayer::forward(
     const TensorInputs& inputs,
@@ -49,13 +74,26 @@ base::Status AttentionLayer::forward(
         return {base::kInvalidArgument, "Attention output must not overlap inputs"};
     }
 
-    if (device == base::DeviceType::kDeviceGPU) {
-        return kernel::attention_cuda(q, k, v, y, context.stream);
-    } else if (device == base::DeviceType::kDeviceCPU) {
-        return kernel::attention_cpu(q, k, v, y);
-    } else {
-        return {base::kFunctionUnImplement, "Attention device is not supported"};
+    const int64_t Hq = q.dim(0);
+    const int64_t L = k.dim(0);
+    if (!scores_storage_ || !probs_storage_)
+        return {base::kInvalidArgument, "Attention workspace is not configured"};
+    if (scores_storage_->device_type() != device ||
+        probs_storage_->device_type() != device)
+        return {base::kInvalidArgument, "Attention workspace device mismatch"};
+    if (scores_storage_->dim(0) != Hq || probs_storage_->dim(0) != Hq ||
+        L > scores_storage_->dim(1) || L > probs_storage_->dim(1))
+        return {base::kInvalidArgument, "Attention workspace shape/capacity mismatch"};
+    for (const tensor::Tensor* t : {&q, &k, &v, static_cast<const tensor::Tensor*>(&y)}) {
+        if (scores_storage_->overlaps(*t) || probs_storage_->overlaps(*t))
+            return {base::kInvalidArgument, "Attention workspace overlaps input/output"};
     }
+
+    auto scores = scores_storage_->view({Hq, L});
+    auto probs = probs_storage_->view({Hq, L});
+    if (device == base::DeviceType::kDeviceGPU)
+        return kernel::attention_cuda(q, k, v, y, scores, probs, context.stream);
+    return kernel::attention_cpu(q, k, v, y, scores, probs);
 }
 
 } // namespace op

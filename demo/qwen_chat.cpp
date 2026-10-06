@@ -1,4 +1,5 @@
 #include "model/qwen2.h"
+#include "sampler/greedy_sampler.h"
 #include "tokenizer/qwen_tokenizer.h"
 #include <chrono>
 
@@ -13,40 +14,6 @@
 #include <vector>
 
 namespace {
-
-int32_t greedy_token(const tensor::Tensor& logits,
-                     std::vector<float>& host_logits) {
-
-    const auto device = logits.device_type();
-
-    if (logits.empty() || logits.dims_size() != 2 || logits.dim(0) != 1 ||
-        logits.data_type() != base::DataType::kDataTypeFp32 ||
-        logits.dim(1) <= 0 ||
-        logits.dim(1) > std::numeric_limits<int32_t>::max() ||
-        (device != base::DeviceType::kDeviceCPU &&
-         device != base::DeviceType::kDeviceGPU)) {
-        throw std::invalid_argument("Expected CPU FP32 logits [1, vocab_size]");
-    }
-
-    const float* scores = logits.ptr<float>();
-
-    if (device == base::DeviceType::kDeviceGPU) {
-        host_logits.resize(logits.size());
-        base::CUDADeviceAllocator copier;
-        copier.memcpy(logits.ptr<float>(), host_logits.data(), logits.byte_size(), base::MemcpyKind::kMemcpyGPU2CPU, nullptr, true);
-        scores = host_logits.data();
-    }
-
-    const int64_t vocal_size = logits.dim(1);
-    int32_t best = 0;
-    for (int64_t i = 0; i < logits.dim(1); ++i) {
-        if (!std::isfinite(scores[i]))
-            throw std::runtime_error("Non-finite logits");
-        if (scores[i] > scores[best])
-            best = static_cast<int32_t>(i);
-    }
-    return best;
-}
 
 void forward_checked(model::Qwen2Model& model, int32_t id) {
     const auto status = model.forward_token(id);
@@ -94,6 +61,7 @@ void print_ready_text(const std::string& decoded,
 
 void answer_once(model::Qwen2Model& model,
                  tokenizer::QwenTokenizer& tokenizer,
+                 sampler::GreedySampler& greedy,
                  const std::string& question,
                  int64_t max_new_tokens) {
 
@@ -139,11 +107,13 @@ void answer_once(model::Qwen2Model& model,
     std::string emitted;
     std::string stop_reason = "达到生成数量上限，回答可能尚未结束";
 
-    std::vector<float> host_logits;
-
     const auto generation_begin = Clock::now();
     for (int64_t step = 0; step < max_new_tokens; ++step) {
-        const int32_t next = greedy_token(model.logits(), host_logits);
+
+        int32_t next = -1;
+        const auto sample_status = greedy.sample(model.logits(), next);
+        if (!sample_status)
+            throw std::runtime_error(sample_status.get_err_message());
 
         // 当前固定检查点的 generation_config.json 中有这两个 EOS。
         // <|im_end|> = 151645；<|endoftext|> = 151643。
@@ -221,8 +191,11 @@ int main(int argc, char** argv) {
 
     std::cout << "正在加载 GPU FP32 模型，请等待..." << std::endl;
 
-    auto model = model::Qwen2Model::load(root, capacity, base::DeviceType::kDeviceGPU);
+    const auto device = base::DeviceType::kDeviceCPU;
+
+    auto model = model::Qwen2Model::load(root, capacity, device);
     tokenizer::QwenTokenizer tokenizer((root / "tokenizer.json").string());
+    sampler::GreedySampler greedy(model->config().block.device);
 
     std::cout << "模型已加载。输入 /exit 退出；每次提问都是独立请求。\n";
 
@@ -235,7 +208,7 @@ int main(int argc, char** argv) {
 
         if (question.find_first_not_of(" \t\r\n") == std::string::npos)
             continue;
-        answer_once(*model, tokenizer, question, max_new_tokens);
+        answer_once(*model, tokenizer, greedy, question, max_new_tokens);
     }
 
     return 0;

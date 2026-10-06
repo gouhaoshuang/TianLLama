@@ -89,6 +89,8 @@ Tokens full_causal_reference(Tokens q, Tokens k, const Tokens& v, int H, int D) 
 } // namespace
 
 TEST(AttentionTest, TensorViewSafety) {
+    auto cpu = std::make_shared<base::CPUDeviceAllocator>();
+
     tensor::Tensor parent = make_data({8}, {0, 1, 2, 3, 4, 5, 6, 7});
     tensor::Tensor a = parent.view({1, 4}, 0);
     tensor::Tensor b = parent.view({1, 4}, 1);
@@ -119,6 +121,8 @@ TEST(AttentionTest, TensorViewSafety) {
 }
 
 TEST(AttentionTest, CacheLifecycle) {
+    auto cpu = std::make_shared<base::CPUDeviceAllocator>();
+
     // 1. cache 创建
     base::KVCache cache(2, 1, 2);
 
@@ -173,12 +177,14 @@ TEST(AttentionTest, CacheLifecycle) {
     auto y = make_data({1, 2}, {123, 123});
     auto keys = cache.keys();
     auto values = cache.values();
-    op::AttentionLayer attention;
+    op::AttentionLayer attention(1, 2, cpu);
     ASSERT_TRUE(attention.forward({&q, &keys, &values}, {&y}));
     expect_data(y, {30, 40}); // 只有一个有效 token，不能混入旧请求的第二个槽位。
 }
 
 TEST(AttentionTest, IncrementalMatchesFullCausal) {
+    auto cpu = std::make_shared<base::CPUDeviceAllocator>();
+
     const int H = 2, D = 4;
     const Tokens q = {
         {1, 0, 0, 1, 1, 1, 0, 1},
@@ -194,7 +200,7 @@ TEST(AttentionTest, IncrementalMatchesFullCausal) {
         {2, -1, 0, 5, 3, 1, -2, 0}};
     const auto expected = full_causal_reference(q, k, v, H, D);
     base::KVCache cache(4, H, D); // 容量故意大于序列长度 3。
-    op::AttentionLayer attention;
+    op::AttentionLayer attention(H, 4, cpu);
     auto q_rot = make_data({H, D}, std::vector<float>(H * D, 0));
     auto output = make_data({H, D}, std::vector<float>(H * D, 123));
 
@@ -221,6 +227,8 @@ TEST(AttentionTest, IncrementalMatchesFullCausal) {
 }
 
 TEST(AttentionTest, GqaSmallValues) {
+    auto cpu = std::make_shared<base::CPUDeviceAllocator>();
+
     auto q = make_data({4, 2}, {1, 0, 1, 0, 1, 0, 1, 0});
     // 按 token 排列：每个 token 内先 KV 头 0，再 KV 头 1。
     auto k = make_data({2, 2, 2}, {
@@ -245,7 +253,7 @@ TEST(AttentionTest, GqaSmallValues) {
                                   });
     auto y = make_data({4, 2}, {123, 123, 123, 123, 123, 123, 123, 123});
 
-    op::AttentionLayer attention;
+    op::AttentionLayer attention(4, 2, cpu);
     const auto status = attention.forward({&q, &k, &v}, {&y});
     ASSERT_TRUE(status) << status.get_err_message();
 
@@ -255,12 +263,14 @@ TEST(AttentionTest, GqaSmallValues) {
     expect_data(y, {a, b, a, b, c, d, c, d});
 }
 TEST(AttentionTest, MqaAveragesTwoTokens) {
+    auto cpu = std::make_shared<base::CPUDeviceAllocator>();
+
     auto q = make_data({4, 2}, {0, 0, 0, 0, 0, 0, 0, 0});
     auto k = make_data({2, 1, 2}, {1, 2, 3, 4});
     auto v = make_data({2, 1, 2}, {2, 4, 6, 8});
     auto y = make_data({4, 2}, {123, 123, 123, 123, 123, 123, 123, 123});
 
-    op::AttentionLayer attention;
+    op::AttentionLayer attention(4, 2, cpu);
     const auto status = attention.forward({&q, &k, &v}, {&y});
     ASSERT_TRUE(status) << status.get_err_message();
     expect_data(y, {4, 6, 4, 6, 4, 6, 4, 6});

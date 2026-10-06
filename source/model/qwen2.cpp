@@ -146,6 +146,7 @@ Qwen2Attention::Qwen2Attention(Qwen2Config config, const Qwen2AttentionWeights& 
       o_proj_(weights_.wo),
 
       allocator_(make_allocator(config_.device)),
+      attention_(config_.q_heads, config_.capacity, allocator_),
       cache_(config_.capacity, config_.kv_heads, config_.head_dim, allocator_),
 
       q_({1, config_.q_dim()}, fp32, allocator_),

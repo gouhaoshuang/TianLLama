@@ -76,8 +76,8 @@ class Qwen2Attention {
     Qwen2AttentionWeights weights_;
 
     op::LinearLayer q_proj_, k_proj_, v_proj_, o_proj_;
-    op::AttentionLayer attention_;
     std::shared_ptr<base::DeviceAllocator> allocator_;
+    op::AttentionLayer attention_;
 
     base::KVCache cache_;
     tensor::Tensor q_, k_, q_rot_, a_;
