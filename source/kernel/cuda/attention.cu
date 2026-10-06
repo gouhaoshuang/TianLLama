@@ -91,10 +91,10 @@ base::Status attention_cuda(const tensor::Tensor& q,
         group,
         scale);
 
-    auto error = cudaGetLastError();
-    if (error != cudaSuccess) return cuda_check::cuda_error(error, "Attention scores launch");
+    base::Status status = cuda_check::check_launch_error("Attention scores launch");
+    if (!status) return status;
 
-    const auto status = softmax_cuda(scores, probs, stream);
+    status = softmax_cuda(scores, probs, stream);
     if (!status) return status;
 
     attention_weighted_sum_kernel<<<blocks, kThreads, 0, cuda_stream>>>(
@@ -105,16 +105,10 @@ base::Status attention_cuda(const tensor::Tensor& q,
         Hkv,
         D,
         group);
-    error = cudaGetLastError();
 
-    if (error != cudaSuccess)
-        return cuda_check::cuda_error(error, "Attention weighted sum launch");
-
-    // 等待最后一个 kernel 完成，函数返回后临时 probs 才可以释放。
-    error = cudaStreamSynchronize(cuda_stream);
-    if (error != cudaSuccess)
-        return cuda_check::cuda_error(error, "Attention execution");
-
-    return {};
+    return cuda_check::finish_launch(
+        stream,
+        "Attention weighted sum launch",
+        "Attention execution");
 }
 } // namespace kernel

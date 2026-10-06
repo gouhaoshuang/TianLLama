@@ -15,8 +15,16 @@
 
 namespace {
 
-void forward_checked(model::Qwen2Model& model, int32_t id) {
-    const auto status = model.forward_token(id);
+void forward_checked(
+    model::Qwen2Model& model,
+    int32_t id,
+    bool compute_logits = true) {
+    const auto status = model.forward_token(id, compute_logits);
+    if (!status)
+        throw std::runtime_error(status.get_err_message());
+}
+void wait_checked(model::Qwen2Model& model) {
+    const base::Status status = model.synchronize();
     if (!status)
         throw std::runtime_error(status.get_err_message());
 }
@@ -94,8 +102,10 @@ void answer_once(model::Qwen2Model& model,
 
     // prefill
     const auto prefill_begin = Clock::now();
-    for (int32_t id : prompt_ids)
-        forward_checked(model, id);
+    for (size_t i = 0; i < prompt_ids.size(); i++) {
+        forward_checked(model, prompt_ids[i], i + 1 == prompt_ids.size());
+    }
+    wait_checked(model); // 把 GPU 实际执行时间纳入 prefill。
     const auto prefill_end = Clock::now();
 
     std::cout << "正在生成回答，最多 " << max_new_tokens
@@ -111,7 +121,7 @@ void answer_once(model::Qwen2Model& model,
     for (int64_t step = 0; step < max_new_tokens; ++step) {
 
         int32_t next = -1;
-        const auto sample_status = greedy.sample(model.logits(), next);
+        const auto sample_status = greedy.sample(model.logits(), next, model.context().stream);
         if (!sample_status)
             throw std::runtime_error(sample_status.get_err_message());
 
@@ -173,11 +183,6 @@ void answer_once(model::Qwen2Model& model,
 
 int main(int argc, char** argv) {
 
-    // if (argc != 2) {
-    //     std::cerr << "用法：" << argv[0] << " <模型导出目录>\n";
-    //     return 1;
-    // }
-
     const std::filesystem::path root =
         argc > 1
             ? std::filesystem::path(argv[1])
@@ -191,7 +196,7 @@ int main(int argc, char** argv) {
 
     std::cout << "正在加载 GPU FP32 模型，请等待..." << std::endl;
 
-    const auto device = base::DeviceType::kDeviceCPU;
+    const auto device = base::DeviceType::kDeviceGPU;
 
     auto model = model::Qwen2Model::load(root, capacity, device);
     tokenizer::QwenTokenizer tokenizer((root / "tokenizer.json").string());

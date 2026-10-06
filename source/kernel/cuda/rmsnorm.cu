@@ -1,3 +1,4 @@
+#include "cuda_utils.cuh"
 #include "kernel/rmsnorm.h"
 
 #include <cub/block/block_reduce.cuh>
@@ -10,16 +11,12 @@
 namespace {
 const int kThreads = 128;
 
-base::Status cuda_error(cudaError_t status, const char *operation) {
-    return {
-        base::kInternalError,
-        std::string(operation) + ": " + cudaGetErrorString(status)};
-}
+
 
 __global__ void rmsnorm_fp32_kernel(
-    const float *input,
-    const float *weight,
-    float *output,
+    const float* input,
+    const float* weight,
+    float* output,
     size_t dim,
     float epsilon) {
     const size_t row = blockIdx.x;
@@ -52,11 +49,11 @@ __global__ void rmsnorm_fp32_kernel(
 namespace kernel {
 
 base::Status rmsnorm_cuda(
-    const tensor::Tensor &input,
-    const tensor::Tensor &weight,
-    tensor::Tensor &output,
+    const tensor::Tensor& input,
+    const tensor::Tensor& weight,
+    tensor::Tensor& output,
     float epsilon,
-    void *stream) {
+    void* stream) {
 
     const size_t dim = weight.size();
     const size_t rows = input.size() / dim;
@@ -74,16 +71,10 @@ base::Status rmsnorm_cuda(
         0,
         cuda_stream>>>(input.ptr<float>(), weight.ptr<float>(), output.ptr<float>(), dim, epsilon);
 
-    cudaError_t status = cudaGetLastError();
-    if (status != cudaSuccess) {
-        return cuda_error(status, "RMSNorm kernel launch");
-    }
-
-    status = cudaStreamSynchronize(cuda_stream);
-    if (status != cudaSuccess) {
-        return cuda_error(status, "RMSNorm kernel execution");
-    }
-    return {};
+    return cuda_check::finish_launch(
+        stream,
+        "RMSNorm kernel launch",
+        "RMSNorm kernel execution");
 }
 
 } // namespace kernel

@@ -1,5 +1,5 @@
+#include "cuda_utils.cuh"
 #include "kernel/linear.h"
-
 #include <cstddef>
 #include <cub/block/block_reduce.cuh>
 #include <cuda_runtime_api.h>
@@ -10,11 +10,7 @@ namespace {
 
 const int kThreads = 128;
 
-base::Status cuda_error(cudaError_t status, const char* operation) {
-    return {
-        base::kInternalError,
-        std::string(operation) + ": " + cudaGetErrorString(status)};
-}
+
 __global__ void linear_fp32_kernel(
     const float* x,
     const float* w,
@@ -73,16 +69,10 @@ base::Status linear_cuda(
         0,
         cuda_stream>>>(input.ptr<float>(), weight.ptr<float>(), b, output.ptr<float>(), K, N);
 
-    cudaError_t status = cudaGetLastError();
-    if (status != cudaSuccess) {
-        return cuda_error(status, "Linear kernel launch");
-    }
-
-    status = cudaStreamSynchronize(cuda_stream);
-    if (status != cudaSuccess) {
-        return cuda_error(status, "Linear kernel execution");
-    }
-    return {};
+    return cuda_check::finish_launch(
+        stream,
+        "Linear kernel launch",
+        "Linear kernel execution");
 }
 
 } // namespace kernel

@@ -10,7 +10,6 @@
 namespace {
 constexpr int kThreads = 128;
 
-
 __global__ void softmax_fp32_kernel(
     const float* input,
     float* output,
@@ -78,15 +77,10 @@ base::Status softmax_cuda(
         output.ptr<float>(),
         clos);
 
-    auto status = cudaGetLastError();
-    if (status != cudaSuccess) {
-        return cuda_check::cuda_error(status, "softmax kernel launch");
-    }
-    status = cudaStreamSynchronize(cuda_stream);
-    if (status != cudaSuccess) {
-        return cuda_check::cuda_error(status, "softmax kernel execution");
-    }
-    return {};
+    return cuda_check::finish_launch(
+        stream,
+        "Softmax kernel launch",
+        "Softmax kernel execution");
 }
 
 } // namespace kernel

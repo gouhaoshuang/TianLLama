@@ -183,6 +183,9 @@ TEST(QwenModelRealTest, GpuShortLogitsAndReset) {
         ASSERT_FALSE(model->failed());
         ASSERT_EQ(model->length(), t + 1);
 
+        const auto done = model->synchronize();
+        ASSERT_TRUE(done) << done.get_err_message();
+
         for (int64_t layer = 0; layer < model->config().num_layers; ++layer)
             ASSERT_EQ(model->layer_length(layer), t + 1) << "layer=" << layer;
 
@@ -203,10 +206,22 @@ TEST(QwenModelRealTest, GpuShortLogitsAndReset) {
         ASSERT_NO_FATAL_FAILURE(check_token(t));
 
     model->reset();
-    ASSERT_FALSE(model->failed());
     ASSERT_EQ(model->length(), 0);
-    EXPECT_THROW(model->logits(), std::logic_error);
-    for (int64_t layer = 0; layer < model->config().num_layers; ++layer)
-        ASSERT_EQ(model->layer_length(layer), 0);
-    ASSERT_NO_FATAL_FAILURE(check_token(0));
+
+    // 连续提交，中间不等待；只有最后一个 token 计算 logits。
+    for (int64_t t = 0; t < T; ++t) {
+        const bool last = t + 1 == T;
+        const auto status = model->forward_token(ids[t], last);
+        ASSERT_TRUE(status) << status.get_err_message();
+        if (!last)
+            EXPECT_THROW(model->logits(), std::logic_error);
+    }
+
+    // CPU 读回结果之前，等待整段 prompt 完成。
+    const auto done = model->synchronize();
+    ASSERT_TRUE(done) << done.get_err_message();
+    ASSERT_EQ(model->length(), T);
+    auto last_reference = expected.view({1, V}, (T - 1) * V);
+    ASSERT_NO_FATAL_FAILURE(
+        test_utils::expect_near(model->logits(), last_reference, 1e-3, 1e-4));
 }

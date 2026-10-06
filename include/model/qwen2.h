@@ -1,4 +1,5 @@
 #pragma once
+#include "base/cuda_config.h"
 #include "base/kv_cache.h"
 #include "op/add.h"
 #include "op/attention.h"
@@ -9,6 +10,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+
 #include <vector>
 
 namespace model {
@@ -62,7 +64,10 @@ class Qwen2Attention {
 
   public:
     Qwen2Attention(Qwen2Config config, const Qwen2AttentionWeights& weights);
-    base::Status forward(const tensor::Tensor& normalized_x, tensor::Tensor& out);
+    base::Status forward(
+        const tensor::Tensor& normalized_x,
+        tensor::Tensor& out,
+        const base::ExecutionContext& context = {});
 
     int64_t length() const { return cache_.length(); }
     bool failed() const { return failed_; }
@@ -88,7 +93,10 @@ class Qwen2DecoderLayer {
 
   public:
     Qwen2DecoderLayer(Qwen2Config config, const Qwen2LayerWeights& weights);
-    base::Status forward(const tensor::Tensor& x, tensor::Tensor& y);
+    base::Status forward(
+        const tensor::Tensor& x,
+        tensor::Tensor& y,
+        const base::ExecutionContext& context = {});
 
     int64_t length() const { return attention_.length(); }
     bool failed() const { return failed_ || attention_.failed(); }
@@ -118,6 +126,12 @@ class Qwen2Model {
     Qwen2Model(QwenModelConfig config, QwenModelWeights weights);
 
     Qwen2Model(const Qwen2Model&) = delete;
+    ~Qwen2Model() noexcept;
+
+    // base::ExecutionContext context() const { return {nullptr}; } ， 使用默认流，执行速度较慢。
+    base::ExecutionContext context() const { return {stream_.get()}; }
+    base::Status synchronize();
+
     Qwen2Model& operator=(const Qwen2Model&) = delete;
 
     static std::unique_ptr<Qwen2Model> load(
@@ -125,7 +139,7 @@ class Qwen2Model {
         int64_t capacity = 1024,
         base::DeviceType device = base::DeviceType::kDeviceCPU);
 
-    base::Status forward_token(int32_t token_id);
+    base::Status forward_token(int32_t token_id, bool compute_logits = true);
 
     const tensor::Tensor& logits() const;
     void reset();
@@ -136,6 +150,7 @@ class Qwen2Model {
 
   private:
     QwenModelConfig config_;
+    base::CudaStream stream_; // 在 Tensor、层和权重之前声明。
     QwenModelWeights weights_;
 
     std::shared_ptr<base::DeviceAllocator> allocator_;

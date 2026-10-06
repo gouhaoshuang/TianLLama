@@ -62,7 +62,6 @@ base::Status rope_cuda(const tensor::Tensor& input,
                        void* stream,
                        base::RopeLayout layout) {
 
-
     const size_t heads = static_cast<size_t>(input.dim(0));
     const size_t head_dim = static_cast<size_t>(input.dim(1));
 
@@ -80,14 +79,9 @@ base::Status rope_cuda(const tensor::Tensor& input,
         theta,
         layout);
 
-    cudaError_t status = cudaGetLastError();
-    if (status != cudaSuccess) {
-        return cuda_check::cuda_error(status, "ROPE kernel launch");
-    }
-    status = cudaStreamSynchronize(cuda_stream);
-    if (status != cudaSuccess) {
-        return cuda_check::cuda_error(status, "ROPE kernel execution");
-    }
-    return {};
+    return cuda_check::finish_launch(
+        stream,
+        "RoPE kernel launch",
+        "RoPE kernel execution");
 }
 } // namespace kernel

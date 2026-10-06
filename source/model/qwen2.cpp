@@ -3,6 +3,7 @@
 #include "op/rope.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <initializer_list>
 #include <limits>
@@ -128,8 +129,14 @@ bool overlaps_attention(const tensor::Tensor& y, const Qwen2AttentionWeights& we
     return overlaps_any(y, {weights.wq, weights.wk, weights.wv, weights.wo, weights.bq, weights.bk, weights.bv});
 }
 
-base::Status run(const op::Layer& layer, op::TensorInputs in, op::TensorOutputs out, const char* stage) {
-    auto status = layer.forward(in, out);
+base::Status run(
+    const op::Layer& layer,
+    op::TensorInputs in,
+    op::TensorOutputs out,
+    const char* stage,
+    const base::ExecutionContext& context) {
+
+    auto status = layer.forward(in, out, context);
     if (!status)
         status.set_err_message(std::string(stage) + ": " + status.get_err_message());
     return status;
@@ -156,7 +163,8 @@ Qwen2Attention::Qwen2Attention(Qwen2Config config, const Qwen2AttentionWeights& 
 
 base::Status Qwen2Attention::forward(
     const tensor::Tensor& n,
-    tensor::Tensor& out) {
+    tensor::Tensor& out,
+    const base::ExecutionContext& context) {
     if (failed_)
         return {base::kInternalError, "Qwen2Attention failed; reset first"};
     if (!is_fp32_on(n, {1, config_.dim}, config_.device) ||
@@ -168,34 +176,34 @@ base::Status Qwen2Attention::forward(
 
     failed_ = true; // 从此处开始，错误/异常都要求 reset。
     const int64_t position = length();
-    auto status = run(q_proj_, {&n}, {&q_}, "q projection");
+    auto status = run(q_proj_, {&n}, {&q_}, "q projection", context);
     if (!status) return status;
-    status = run(k_proj_, {&n}, {&k_}, "k projection");
+    status = run(k_proj_, {&n}, {&k_}, "k projection", context);
     if (!status) return status;
 
     auto k_slot = cache_.key_slot(position);
     auto v_slot = cache_.value_slot(position);
     auto v_row = v_slot.view({1, config_.kv_dim()});
-    status = run(v_proj_, {&n}, {&v_row}, "v projection");
+    status = run(v_proj_, {&n}, {&v_row}, "v projection", context);
     if (!status) return status;
 
     auto q_heads = q_.view({config_.q_heads, config_.head_dim});
     auto k_heads = k_.view({config_.kv_heads, config_.head_dim});
     op::RoPELayer rope(position, config_.rope_theta, base::RopeLayout::kHalfSplit);
-    status = run(rope, {&q_heads}, {&q_rot_}, "q rope");
+    status = run(rope, {&q_heads}, {&q_rot_}, "q rope", context);
     if (!status) return status;
-    status = run(rope, {&k_heads}, {&k_slot}, "k rope");
+    status = run(rope, {&k_heads}, {&k_slot}, "k rope", context);
     if (!status) return status;
-    status = cache_.commit(position);
+    status = cache_.commit(position, context);
     if (!status) return status;
 
     auto keys = cache_.keys();
     auto values = cache_.values();
-    status = run(attention_, {&q_rot_, &keys, &values}, {&a_}, "gqa");
+    status = run(attention_, {&q_rot_, &keys, &values}, {&a_}, "gqa", context);
     if (!status) return status;
 
     auto a_row = a_.view({1, config_.q_dim()});
-    status = run(o_proj_, {&a_row}, {&out}, "o projection");
+    status = run(o_proj_, {&a_row}, {&out}, "o projection", context);
     if (!status) return status;
 
     failed_ = false;
@@ -225,7 +233,8 @@ Qwen2DecoderLayer::Qwen2DecoderLayer(
 
 base::Status Qwen2DecoderLayer::forward(
     const tensor::Tensor& x,
-    tensor::Tensor& y) {
+    tensor::Tensor& y,
+    const base::ExecutionContext& context) {
     if (failed())
         return {base::kInternalError, "Qwen2DecoderLayer failed; reset first"};
     if (!is_fp32_on(x, {1, config_.dim}, config_.device) || !is_fp32_on(y, {1, config_.dim}, config_.device) ||
@@ -236,30 +245,30 @@ base::Status Qwen2DecoderLayer::forward(
         return {base::kInvalidArgument, "Qwen2DecoderLayer cache is full"};
 
     failed_ = true;
-    auto status = run(attention_norm_, {&x}, {&n_}, "attention norm");
+    auto status = run(attention_norm_, {&x}, {&n_}, "attention norm", context);
     if (!status) return status;
-    status = attention_.forward(n_, attn_out_);
-    if (!status) return status;
-
-    status = run(add_, {&x, &attn_out_}, {&h_}, "attention residual");
+    status = attention_.forward(n_, attn_out_, context);
     if (!status) return status;
 
-    status = run(ffn_norm_, {&h_}, {&z_}, "ffn norm");
+    status = run(add_, {&x, &attn_out_}, {&h_}, "attention residual", context);
     if (!status) return status;
 
-    status = run(gate_proj_, {&z_}, {&gate_}, "gate");
+    status = run(ffn_norm_, {&h_}, {&z_}, "ffn norm", context);
     if (!status) return status;
 
-    status = run(up_proj_, {&z_}, {&up_}, "up");
+    status = run(gate_proj_, {&z_}, {&gate_}, "gate", context);
     if (!status) return status;
 
-    status = run(swiglu_, {&gate_, &up_}, {&act_}, "swiglu");
+    status = run(up_proj_, {&z_}, {&up_}, "up", context);
     if (!status) return status;
 
-    status = run(down_proj_, {&act_}, {&down_}, "down");
+    status = run(swiglu_, {&gate_, &up_}, {&act_}, "swiglu", context);
     if (!status) return status;
 
-    status = run(add_, {&h_, &down_}, {&y}, "ffn residual");
+    status = run(down_proj_, {&act_}, {&down_}, "down", context);
+    if (!status) return status;
+
+    status = run(add_, {&h_, &down_}, {&y}, "ffn residual", context);
     if (!status) return status;
 
     failed_ = false;
@@ -281,6 +290,7 @@ base::Status Qwen2DecoderLayer::forward(
 
 Qwen2Model::Qwen2Model(QwenModelConfig config, QwenModelWeights weights)
     : config_(check_model_config(config)),
+      stream_(config_.block.device == base::DeviceType::kDeviceGPU),
       weights_(check_model_weights(config_, std::move(weights))),
 
       allocator_(make_allocator(config_.block.device)),
@@ -299,7 +309,7 @@ Qwen2Model::Qwen2Model(QwenModelConfig config, QwenModelWeights weights)
         layers_.push_back(std::make_unique<Qwen2DecoderLayer>(config_.block, weights));
 }
 
-base::Status Qwen2Model::forward_token(int32_t id) {
+base::Status Qwen2Model::forward_token(int32_t id, bool compute_logits) {
 
     logits_valid_ = false;
 
@@ -320,6 +330,7 @@ base::Status Qwen2Model::forward_token(int32_t id) {
     // 从这里开始可能修改部分层缓存；任何错误或异常都必须整请求 reset。
     failed_ = true;
 
+    const base::ExecutionContext context = this->context();
     const size_t dim = static_cast<std::size_t>(config_.block.dim);
     const size_t offset = static_cast<size_t>(id) * dim;
 
@@ -332,14 +343,14 @@ base::Status Qwen2Model::forward_token(int32_t id) {
         hidden_a_.ptr<float>(),
         hidden_a_.byte_size(),
         kind,
-        nullptr,
-        true);
+        context.stream,
+        false);
 
     tensor::Tensor* current = &hidden_a_;
     tensor::Tensor* next = &hidden_b_;
 
     for (size_t i = 0; i < layers_.size(); i++) {
-        base::Status status = layers_[i]->forward(*current, *next);
+        base::Status status = layers_[i]->forward(*current, *next, context);
 
         if (!status) {
             status.set_err_message("layer " + std::to_string(i) + ": " +
@@ -353,15 +364,17 @@ base::Status Qwen2Model::forward_token(int32_t id) {
         std::swap(current, next);
     }
 
-    auto status = final_norm_.forward({current}, {next});
-    if (!status) return status;
+    if (compute_logits) {
+        auto status = final_norm_.forward({current}, {next}, context);
+        if (!status) return status;
 
-    status = lm_head_.forward({next}, {&logits_});
-    if (!status) return status;
+        status = lm_head_.forward({next}, {&logits_}, context);
+        if (!status) return status;
+    }
 
     ++length_;
     failed_ = false;
-    logits_valid_ = true;
+    logits_valid_ = compute_logits;
     return {};
 }
 
@@ -369,14 +382,6 @@ const tensor::Tensor& Qwen2Model::logits() const {
     if (!logits_valid_)
         throw std::logic_error("No valid logits; call forward_token successfully first");
     return logits_;
-}
-
-void Qwen2Model::reset() {
-    for (auto& layer : layers_)
-        layer->reset();
-    length_ = 0;
-    failed_ = false;
-    logits_valid_ = false;
 }
 
 using json = nlohmann::json;
@@ -394,12 +399,7 @@ std::unique_ptr<Qwen2Model> Qwen2Model::load(
     const auto& c = j.at("config");
 
     if (j.at("format_version") != 2 ||
-        j.at("model_id") != "Qwen/Qwen2.5-0.5B-Instruct" ||
-        j.at("compute_dtype") != "float32" ||
-        j.at("weight_layout") != "out_in" ||
-        j.at("rope_layout") != "half_split" ||
-        j.at("lm_head_alias") != "embedding" ||
-        c.at("tie_word_embeddings") != true) {
+        j.at("model_id") != "Qwen/Qwen2.5-0.5B-Instruct") {
         throw std::invalid_argument("Unsupported model manifest");
     }
 
@@ -496,6 +496,37 @@ std::unique_ptr<Qwen2Model> Qwen2Model::load(
     }
     // 4. 权重准备好后，交给第七步的构造函数。
     return std::make_unique<Qwen2Model>(config, std::move(weights));
+}
+
+Qwen2Model::~Qwen2Model() noexcept {
+    const cudaStream_t handle = static_cast<cudaStream_t>(context().stream);
+
+    if (!handle) return;
+    // 析构函数体先运行；此时全部权重、Tensor、层工作区仍存活。
+    const auto error = cudaStreamSynchronize(handle);
+    if (error != cudaSuccess)
+        std::fprintf(stderr, "Model cleanup execution: %s\n", cudaGetErrorString(error));
+}
+base::Status Qwen2Model::synchronize() {
+    auto status = stream_.synchronize();
+    if (!status) {
+        failed_ = true;
+        logits_valid_ = false;
+    }
+    return status;
+}
+
+void Qwen2Model::reset() {
+    // 等待成功后才归零；失败不能伪装成已经恢复。
+    const auto status = synchronize();
+    if (!status)
+        throw std::runtime_error(status.get_err_message());
+
+    for (auto& layer : layers_)
+        layer->reset();
+    length_ = 0;
+    failed_ = false;
+    logits_valid_ = false;
 }
 
 } // namespace model
